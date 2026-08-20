@@ -40,9 +40,6 @@ def test_render_delivery_result_shows_dry_run_summary() -> None:
 	assert shop_script.render_delivery_result(result) == (
 		"Dry run: Apple Reminders: Groceries\n"
 		"Parent: Classic Chili\n"
-		"Items:\n"
-		"- 5 lb Ground turkey\n"
-		"- 9 cans Beans\n"
-		"Omitted:\n"
-		"x 3 tsp Salt"
+		"Included: 2 items\n"
+		"Omitted: 1 item"
 	)

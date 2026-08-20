@@ -54,7 +54,7 @@ def test_render_shopping_list_includes_scaled_items() -> None:
 
 	shopping_list = build_shopping_list(recipe, 2, include_on_hand=False)
 
-	assert render_shopping_list(shopping_list, color_scheme=PLAIN_COLORS) == "Test Recipe (2 batches)\n\nIncluded:\n- 2     Apples [Test]"
+	assert render_shopping_list(shopping_list, color_scheme=PLAIN_COLORS) == "Test Recipe (2 batches)\n\nIncluded\n---------------------\n- 2     Apples [Test]"
 
 
 def test_build_shopping_list_can_omit_short_name_tag() -> None:
@@ -72,7 +72,7 @@ def test_build_shopping_list_can_omit_short_name_tag() -> None:
 
 	shopping_list = build_shopping_list(recipe, 2, include_on_hand=False, append_short_name=False)
 
-	assert render_shopping_list(shopping_list, color_scheme=PLAIN_COLORS) == "Test Recipe (2 batches)\n\nIncluded:\n- 2     Apples"
+	assert render_shopping_list(shopping_list, color_scheme=PLAIN_COLORS) == "Test Recipe (2 batches)\n\nIncluded\n--------------\n- 2     Apples"
 
 
 def test_build_shopping_list_omits_empty_short_name_tag() -> None:
@@ -90,7 +90,7 @@ def test_build_shopping_list_omits_empty_short_name_tag() -> None:
 
 	shopping_list = build_shopping_list(recipe, 2, include_on_hand=False)
 
-	assert render_shopping_list(shopping_list, color_scheme=PLAIN_COLORS) == "Test Recipe (2 batches)\n\nIncluded:\n- 2     Apples"
+	assert render_shopping_list(shopping_list, color_scheme=PLAIN_COLORS) == "Test Recipe (2 batches)\n\nIncluded\n--------------\n- 2     Apples"
 
 
 def test_render_shopping_list_can_include_omitted_items_inline() -> None:
@@ -116,9 +116,9 @@ def test_render_shopping_list_can_include_omitted_items_inline() -> None:
 
 	assert render_shopping_list(shopping_list, color_scheme=PLAIN_COLORS, include_omitted=True) == (
 		"Test Recipe (2 batches)\n\n"
-		"Included:\n"
+		"Included\n-------------------------\n"
 		"- 2         Apples [Test]\n\n"
-		"Omitted:\n"
+		"Omitted\n-------------------------\n"
 		"x 2 tsp     Salt [Test]"
 	)
 
@@ -146,7 +146,7 @@ def test_render_shopping_list_aligns_ingredient_names() -> None:
 
 	assert render_shopping_list(shopping_list, color_scheme=PLAIN_COLORS) == (
 		"Test Recipe (1 batch)\n\n"
-		"Included:\n"
+		"Included\n--------------------------\n"
 		"- 1           Apple [Test]\n"
 		"- 1.5 tsp     Salt [Test]"
 	)
@@ -168,4 +168,4 @@ def test_render_shopping_list_colors_quantity_and_unit_together() -> None:
 
 	shopping_list = build_shopping_list(recipe, 1, include_on_hand=False)
 
-	assert render_shopping_list(shopping_list) == "Test Recipe (1 batch)\n\nIncluded:\n- \033[32m1.5 tsp\033[0m     Salt [Test]"
+	assert render_shopping_list(shopping_list) == "Test Recipe (1 batch)\n\nIncluded\n-------------------------\n- \033[32m1.5 tsp\033[0m     Salt [Test]"

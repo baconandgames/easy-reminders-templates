@@ -90,13 +90,15 @@ def render_shopping_list(
 	if include_omitted:
 		items = shopping_list.included_items + shopping_list.omitted_items
 	prefix_width: int = max((len(format_item_prefix(item)) for item in items), default=0)
+	line_width: int = calculate_line_width(items, prefix_width)
 	lines: list[str] = [
 		style_text(
 			f"{shopping_list.recipe_name} ({format_number(shopping_list.batch_size)} {pluralize_phrase('batch', shopping_list.batch_size)})",
 			colors.standard_text_color,
 		),
 		"",
-		style_text("Included:", colors.standard_text_color),
+		style_text("Included", colors.standard_text_color),
+		style_text("-" * line_width, colors.standard_text_color),
 	]
 
 	for item in shopping_list.included_items:
@@ -106,11 +108,17 @@ def render_shopping_list(
 		return "\n".join(lines)
 
 	lines.append("")
-	lines.append(style_text("Omitted:", colors.omitted_ingredient_color))
+	lines.append(style_text("Omitted", colors.omitted_ingredient_color))
+	lines.append(style_text("-" * line_width, colors.omitted_ingredient_color))
 	for item in shopping_list.omitted_items:
 		lines.append(style_text(f"x {format_item(item, prefix_width, None)}", colors.omitted_ingredient_color))
 
 	return "\n".join(lines)
+
+
+def calculate_line_width(items: list[ShoppingListItem], prefix_width: int) -> int:
+	item_width: int = max((len(format_item_name(item)) + len(format_item_tag(item)) for item in items), default=0)
+	return 2 + prefix_width + ITEM_NAME_GAP + item_width
 
 
 def format_item(
@@ -118,17 +126,24 @@ def format_item(
 	prefix_width: int,
 	color_scheme: ColorScheme | None = None,
 ) -> str:
-	tag: str = f" [{item.tag}]" if item.tag else ""
+	tag: str = format_item_tag(item)
 	prefix: str = format_item_prefix(item)
 	padded_prefix: str = prefix.ljust(prefix_width)
 	if color_scheme is not None:
 		padded_prefix = style_text(padded_prefix, color_scheme.quantity_color)
 
-	name: str = item.name
-	if item.unit is None:
-		name = pluralize_phrase(item.name, item.quantity)
+	return f"{padded_prefix}{' ' * ITEM_NAME_GAP}{format_item_name(item)}{tag}"
 
-	return f"{padded_prefix}{' ' * ITEM_NAME_GAP}{name}{tag}"
+
+def format_item_name(item: ShoppingListItem) -> str:
+	if item.unit is None:
+		return pluralize_phrase(item.name, item.quantity)
+
+	return item.name
+
+
+def format_item_tag(item: ShoppingListItem) -> str:
+	return f" [{item.tag}]" if item.tag else ""
 
 
 def format_item_prefix(item: ShoppingListItem) -> str:
@@ -140,14 +155,8 @@ def format_item_prefix(item: ShoppingListItem) -> str:
 
 
 def format_delivery_item(item: ShoppingListItem) -> str:
-	tag: str = f" [{item.tag}]" if item.tag else ""
 	prefix: str = format_item_prefix(item)
-
-	name: str = item.name
-	if item.unit is None:
-		name = pluralize_phrase(item.name, item.quantity)
-
-	return f"{prefix} {name}{tag}"
+	return f"{prefix} {format_item_name(item)}{format_item_tag(item)}"
 
 
 def style_text(value: str, color_name: str) -> str:

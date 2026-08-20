@@ -73,21 +73,17 @@ def main() -> int:
 
 def render_delivery_result(result: DeliveryResult) -> str:
 	status: str = "Dry run" if result.dry_run else "Created"
-	lines: list[str] = [
-		f"{status}: {result.target_name}",
-		f"Parent: {result.created_parent}",
-		"Items:",
-	]
+	item_label: str = "item" if len(result.created_items) == 1 else "items"
+	omitted_label: str = "item" if len(result.omitted_items) == 1 else "items"
 
-	for item in result.created_items:
-		lines.append(f"- {item}")
-
-	if result.omitted_items:
-		lines.append("Omitted:")
-		for item in result.omitted_items:
-			lines.append(f"x {item}")
-
-	return "\n".join(lines)
+	return "\n".join(
+		[
+			f"{status}: {result.target_name}",
+			f"Parent: {result.created_parent}",
+			f"Included: {len(result.created_items)} {item_label}",
+			f"Omitted: {len(result.omitted_items)} {omitted_label}",
+		]
+	)
 
 
 def select_recipe(recipes: dict[str, dict[str, Any]]) -> dict[str, Any]:
