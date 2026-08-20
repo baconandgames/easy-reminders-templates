@@ -45,7 +45,7 @@ def main() -> int:
 	include_on_hand: bool = prompt_for_include_on_hand()
 	shopping_list = build_shopping_list(recipe, batch_size, include_on_hand)
 
-	print(render_shopping_list(shopping_list))
+	print(render_shopping_list(shopping_list, include_omitted=not include_on_hand))
 
 	return 0
 

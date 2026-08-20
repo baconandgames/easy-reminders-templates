@@ -6,6 +6,7 @@ from typing import Any
 
 RESET: str = "\033[0m"
 GREEN: str = "\033[32m"
+GREY: str = "\033[90m"
 
 
 @dataclass(frozen=True)
@@ -21,6 +22,7 @@ class ShoppingListItem:
 class ShoppingList:
 	recipe_name: str
 	batch_size: float
+	items: list[ShoppingListItem]
 	included_items: list[ShoppingListItem]
 	omitted_items: list[ShoppingListItem]
 
@@ -30,6 +32,7 @@ def build_shopping_list(
 	batch_size: float,
 	include_on_hand: bool,
 ) -> ShoppingList:
+	items: list[ShoppingListItem] = []
 	included_items: list[ShoppingListItem] = []
 	omitted_items: list[ShoppingListItem] = []
 	short_name: str | None = recipe.get("short_name")
@@ -42,6 +45,7 @@ def build_shopping_list(
 			tag=short_name,
 			omitted=ingredient["always_on_hand"] and not include_on_hand,
 		)
+		items.append(item)
 
 		if item.omitted:
 			omitted_items.append(item)
@@ -51,12 +55,17 @@ def build_shopping_list(
 	return ShoppingList(
 		recipe_name=recipe["name"],
 		batch_size=batch_size,
+		items=items,
 		included_items=included_items,
 		omitted_items=omitted_items,
 	)
 
 
-def render_shopping_list(shopping_list: ShoppingList, use_color: bool = True) -> str:
+def render_shopping_list(
+	shopping_list: ShoppingList,
+	use_color: bool = True,
+	include_omitted: bool = False,
+) -> str:
 	lines: list[str] = [
 		f"{shopping_list.recipe_name} ({format_number(shopping_list.batch_size)} {pluralize_phrase('batch', shopping_list.batch_size)})",
 		"",
@@ -64,6 +73,15 @@ def render_shopping_list(shopping_list: ShoppingList, use_color: bool = True) ->
 
 	for item in shopping_list.included_items:
 		lines.append(f"- {format_item(item, use_color)}")
+
+	if not include_omitted:
+		return "\n".join(lines)
+
+	for item in shopping_list.omitted_items:
+		line: str = f"x {format_item(item, use_color=False)}"
+		if use_color:
+			line = colorize(line, GREY)
+		lines.append(line)
 
 	return "\n".join(lines)
 
