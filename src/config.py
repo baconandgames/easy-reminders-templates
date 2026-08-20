@@ -6,8 +6,13 @@ from pathlib import Path
 from typing import Any
 
 
+SUPPORTED_TARGET_APPS: set[str] = {"apple_reminders"}
+
+
 @dataclass(frozen=True)
 class Config:
+	target_app: str = "apple_reminders"
+	apple_reminders_list_name: str = "Groceries"
 	append_short_name: bool = True
 	include_on_hand_default: bool = False
 	standard_text_color: str = "default"
@@ -31,6 +36,12 @@ def load_config(path: Path) -> Config:
 	if not isinstance(raw_data, dict):
 		raise ConfigLoadError("Config file must contain a JSON object.")
 
+	target_app: str = _read_target_app(raw_data, "target_app", Config.target_app)
+	apple_reminders_list_name: str = _read_string(
+		raw_data,
+		"apple_reminders_list_name",
+		Config.apple_reminders_list_name,
+	)
 	append_short_name: bool = _read_bool(raw_data, "append_short_name", Config.append_short_name)
 	include_on_hand_default: bool = _read_bool(raw_data, "include_on_hand_default", Config.include_on_hand_default)
 	standard_text_color: str = _read_color(raw_data, "standard_text_color", Config.standard_text_color)
@@ -42,6 +53,8 @@ def load_config(path: Path) -> Config:
 	)
 
 	return Config(
+		target_app=target_app,
+		apple_reminders_list_name=apple_reminders_list_name,
 		append_short_name=append_short_name,
 		include_on_hand_default=include_on_hand_default,
 		standard_text_color=standard_text_color,
@@ -54,6 +67,25 @@ def _read_bool(raw_data: dict[str, Any], key: str, default: bool) -> bool:
 	value: Any = raw_data.get(key, default)
 	if not isinstance(value, bool):
 		raise ConfigLoadError(f'Config value "{key}" must be true or false.')
+
+	return value
+
+
+def _read_string(raw_data: dict[str, Any], key: str, default: str) -> str:
+	value: Any = raw_data.get(key, default)
+	if not isinstance(value, str):
+		raise ConfigLoadError(f'Config value "{key}" must be a string.')
+
+	if value.strip() == "":
+		raise ConfigLoadError(f'Config value "{key}" must not be empty.')
+
+	return value
+
+
+def _read_target_app(raw_data: dict[str, Any], key: str, default: str) -> str:
+	value: str = _read_string(raw_data, key, default)
+	if value not in SUPPORTED_TARGET_APPS:
+		raise ConfigLoadError(f'Config value "{key}" has unsupported target "{value}".')
 
 	return value
 

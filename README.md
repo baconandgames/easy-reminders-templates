@@ -64,6 +64,8 @@ text editor.
 
 ```json
 {
+  "target_app": "apple_reminders",
+  "apple_reminders_list_name": "Groceries",
   "append_short_name": true,
   "include_on_hand_default": false,
   "standard_text_color": "default",
@@ -86,3 +88,10 @@ Supported color values:
 - `grey`
 
 Invalid config values raise a clear error when `shop` runs.
+
+Supported target app values:
+
+- `apple_reminders`
+
+Delivery support is currently a dry-run adapter boundary. Real Apple Reminders
+creation has not been enabled yet.

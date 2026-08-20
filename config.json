@@ -1,4 +1,6 @@
 {
+  "target_app": "apple_reminders",
+  "apple_reminders_list_name": "Groceries",
   "append_short_name": true,
   "include_on_hand_default": false,
   "standard_text_color": "default",

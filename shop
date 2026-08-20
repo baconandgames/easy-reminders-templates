@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from src.config import Config, ConfigLoadError, load_config
+from src.delivery import DeliveryResult, get_delivery_target
 from src.formatter import ColorScheme, build_shopping_list, format_number, render_shopping_list
 from src.recipes import RecipeLoadError, find_recipe_by_short_name, load_recipes
 
@@ -63,8 +64,30 @@ def main() -> int:
 		omitted_ingredient_color=config.omitted_ingredient_color,
 	)
 	print(render_shopping_list(shopping_list, color_scheme=color_scheme, include_omitted=not include_on_hand))
+	delivery_result: DeliveryResult = get_delivery_target(config.target_app).create_list(shopping_list, config)
+	print()
+	print(render_delivery_result(delivery_result))
 
 	return 0
+
+
+def render_delivery_result(result: DeliveryResult) -> str:
+	status: str = "Dry run" if result.dry_run else "Created"
+	lines: list[str] = [
+		f"{status}: {result.target_name}",
+		f"Parent: {result.created_parent}",
+		"Items:",
+	]
+
+	for item in result.created_items:
+		lines.append(f"- {item}")
+
+	if result.omitted_items:
+		lines.append("Omitted:")
+		for item in result.omitted_items:
+			lines.append(f"x {item}")
+
+	return "\n".join(lines)
 
 
 def select_recipe(recipes: dict[str, dict[str, Any]]) -> dict[str, Any]:

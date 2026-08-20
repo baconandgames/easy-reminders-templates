@@ -10,6 +10,8 @@ def test_load_config_uses_defaults_when_file_is_missing() -> None:
 	with TemporaryDirectory() as directory:
 		config = load_config(Path(directory) / "missing.json")
 
+	assert config.target_app == "apple_reminders"
+	assert config.apple_reminders_list_name == "Groceries"
 	assert config.append_short_name is True
 	assert config.include_on_hand_default is False
 	assert config.standard_text_color == "default"
@@ -21,12 +23,14 @@ def test_load_config_reads_values() -> None:
 	with TemporaryDirectory() as directory:
 		path: Path = Path(directory) / "config.json"
 		path.write_text(
-			'{"append_short_name": false, "include_on_hand_default": true, "standard_text_color": "white", "quantity_color": "cyan", "omitted_ingredient_color": "grey"}',
+			'{"target_app": "apple_reminders", "apple_reminders_list_name": "Shared Grocery", "append_short_name": false, "include_on_hand_default": true, "standard_text_color": "white", "quantity_color": "cyan", "omitted_ingredient_color": "grey"}',
 			encoding="utf-8",
 		)
 
 		config = load_config(path)
 
+	assert config.target_app == "apple_reminders"
+	assert config.apple_reminders_list_name == "Shared Grocery"
 	assert config.append_short_name is False
 	assert config.include_on_hand_default is True
 	assert config.standard_text_color == "white"
@@ -56,5 +60,31 @@ def test_load_config_rejects_invalid_color_values() -> None:
 			load_config(path)
 		except ConfigLoadError as error:
 			assert 'Config value "quantity_color" has unsupported color "orange".' == str(error)
+		else:
+			raise AssertionError("Expected ConfigLoadError")
+
+
+def test_load_config_rejects_invalid_target_apps() -> None:
+	with TemporaryDirectory() as directory:
+		path: Path = Path(directory) / "config.json"
+		path.write_text('{"target_app": "google_notes"}', encoding="utf-8")
+
+		try:
+			load_config(path)
+		except ConfigLoadError as error:
+			assert 'Config value "target_app" has unsupported target "google_notes".' == str(error)
+		else:
+			raise AssertionError("Expected ConfigLoadError")
+
+
+def test_load_config_rejects_empty_reminders_list_names() -> None:
+	with TemporaryDirectory() as directory:
+		path: Path = Path(directory) / "config.json"
+		path.write_text('{"apple_reminders_list_name": ""}', encoding="utf-8")
+
+		try:
+			load_config(path)
+		except ConfigLoadError as error:
+			assert 'Config value "apple_reminders_list_name" must not be empty.' == str(error)
 		else:
 			raise AssertionError("Expected ConfigLoadError")

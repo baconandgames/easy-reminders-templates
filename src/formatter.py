@@ -139,6 +139,17 @@ def format_item_prefix(item: ShoppingListItem) -> str:
 	return f"{quantity} {pluralize_phrase(item.unit, item.quantity)}"
 
 
+def format_delivery_item(item: ShoppingListItem) -> str:
+	tag: str = f" [{item.tag}]" if item.tag else ""
+	prefix: str = format_item_prefix(item)
+
+	name: str = item.name
+	if item.unit is None:
+		name = pluralize_phrase(item.name, item.quantity)
+
+	return f"{prefix} {name}{tag}"
+
+
 def style_text(value: str, color_name: str) -> str:
 	color: str = COLOR_CODES[color_name]
 	if color == "":
