@@ -41,10 +41,14 @@ def main() -> int:
 		_recipe_id, recipe = match
 
 	batch_size: float = prompt_for_batch_size(recipe)
+	include_on_hand: bool = prompt_for_include_on_hand()
 
 	print(f"{recipe['name']} ({format_number(batch_size)} {pluralize_phrase('batch', batch_size)})")
 	print()
 	for ingredient in recipe["ingredients"]:
+		if ingredient["always_on_hand"] and not include_on_hand:
+			continue
+
 		quantity: float = float(ingredient["quantity"]) * batch_size
 		unit: str | None = ingredient.get("unit")
 		name: str = ingredient["name"]
@@ -104,6 +108,21 @@ def prompt_for_batch_size(recipe: dict[str, Any]) -> float:
 			return batch_size
 
 		print("Enter a positive number.")
+
+
+def prompt_for_include_on_hand() -> bool:
+	while True:
+		selection: str = input("Include on-hand items? [y/N]: ").strip().casefold()
+		if selection == "":
+			return False
+
+		if selection in {"y", "yes"}:
+			return True
+
+		if selection in {"n", "no"}:
+			return False
+
+		print("Enter y or n.")
 
 
 def format_number(value: float) -> str:
