@@ -65,6 +65,7 @@ text editor.
 ```json
 {
   "append_short_name": true,
+  "include_on_hand_default": false,
   "standard_text_color": "default",
   "quantity_color": "green",
   "omitted_ingredient_color": "grey"

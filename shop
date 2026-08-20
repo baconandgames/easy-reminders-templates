@@ -49,7 +49,7 @@ def main() -> int:
 		_recipe_id, recipe = match
 
 	batch_size: float = prompt_for_batch_size(recipe)
-	include_on_hand: bool = prompt_for_include_on_hand()
+	include_on_hand: bool = prompt_for_include_on_hand(config.include_on_hand_default)
 	shopping_list = build_shopping_list(
 		recipe,
 		batch_size,
@@ -114,11 +114,13 @@ def prompt_for_batch_size(recipe: dict[str, Any]) -> float:
 		print("Enter a positive number.")
 
 
-def prompt_for_include_on_hand() -> bool:
+def prompt_for_include_on_hand(default: bool) -> bool:
+	prompt: str = "Include on-hand items? [Y/n]: " if default else "Include on-hand items? [y/N]: "
+
 	while True:
-		selection: str = input("Include on-hand items? [y/N]: ").strip().casefold()
+		selection: str = input(prompt).strip().casefold()
 		if selection == "":
-			return False
+			return default
 
 		if selection in {"y", "yes"}:
 			return True

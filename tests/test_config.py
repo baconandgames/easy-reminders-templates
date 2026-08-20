@@ -11,6 +11,7 @@ def test_load_config_uses_defaults_when_file_is_missing() -> None:
 		config = load_config(Path(directory) / "missing.json")
 
 	assert config.append_short_name is True
+	assert config.include_on_hand_default is False
 	assert config.standard_text_color == "default"
 	assert config.quantity_color == "green"
 	assert config.omitted_ingredient_color == "grey"
@@ -20,13 +21,14 @@ def test_load_config_reads_values() -> None:
 	with TemporaryDirectory() as directory:
 		path: Path = Path(directory) / "config.json"
 		path.write_text(
-			'{"append_short_name": false, "standard_text_color": "white", "quantity_color": "cyan", "omitted_ingredient_color": "grey"}',
+			'{"append_short_name": false, "include_on_hand_default": true, "standard_text_color": "white", "quantity_color": "cyan", "omitted_ingredient_color": "grey"}',
 			encoding="utf-8",
 		)
 
 		config = load_config(path)
 
 	assert config.append_short_name is False
+	assert config.include_on_hand_default is True
 	assert config.standard_text_color == "white"
 	assert config.quantity_color == "cyan"
 	assert config.omitted_ingredient_color == "grey"

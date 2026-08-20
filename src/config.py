@@ -9,6 +9,7 @@ from typing import Any
 @dataclass(frozen=True)
 class Config:
 	append_short_name: bool = True
+	include_on_hand_default: bool = False
 	standard_text_color: str = "default"
 	quantity_color: str = "green"
 	omitted_ingredient_color: str = "grey"
@@ -31,6 +32,7 @@ def load_config(path: Path) -> Config:
 		raise ConfigLoadError("Config file must contain a JSON object.")
 
 	append_short_name: bool = _read_bool(raw_data, "append_short_name", Config.append_short_name)
+	include_on_hand_default: bool = _read_bool(raw_data, "include_on_hand_default", Config.include_on_hand_default)
 	standard_text_color: str = _read_color(raw_data, "standard_text_color", Config.standard_text_color)
 	quantity_color: str = _read_color(raw_data, "quantity_color", Config.quantity_color)
 	omitted_ingredient_color: str = _read_color(
@@ -41,6 +43,7 @@ def load_config(path: Path) -> Config:
 
 	return Config(
 		append_short_name=append_short_name,
+		include_on_hand_default=include_on_hand_default,
 		standard_text_color=standard_text_color,
 		quantity_color=quantity_color,
 		omitted_ingredient_color=omitted_ingredient_color,
