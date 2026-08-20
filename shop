@@ -42,7 +42,20 @@ def main() -> int:
 
 	batch_size: float = prompt_for_batch_size(recipe)
 
-	print(f"{recipe['name']} ({format_number(batch_size)} batch)")
+	print(f"{recipe['name']} ({format_number(batch_size)} {pluralize_phrase('batch', batch_size)})")
+	print()
+	for ingredient in recipe["ingredients"]:
+		quantity: float = float(ingredient["quantity"]) * batch_size
+		unit: str | None = ingredient.get("unit")
+		name: str = ingredient["name"]
+		short_name: str | None = recipe.get("short_name")
+		tag: str = f" [{short_name}]" if short_name is not None else ""
+
+		if unit is None:
+			print(f"- {format_number(quantity)} {pluralize_phrase(name, quantity)}{tag}")
+		else:
+			print(f"- {format_number(quantity)} {pluralize_phrase(unit, quantity)} {name}{tag}")
+
 	return 0
 
 
@@ -97,7 +110,29 @@ def format_number(value: float) -> str:
 	if value.is_integer():
 		return str(int(value))
 
-	return str(value)
+	return f"{value:.2f}".rstrip("0").rstrip(".")
+
+
+def pluralize_phrase(value: str, quantity: float) -> str:
+	if 0 < quantity <= 1:
+		return value
+
+	parts: list[str] = value.split(" ")
+	parts[-1] = pluralize_word(parts[-1])
+	return " ".join(parts)
+
+
+def pluralize_word(value: str) -> str:
+	if value in {"tbsp", "tsp", "lb", "oz"}:
+		return value
+
+	if value.endswith("y") and len(value) > 1 and value[-2].lower() not in "aeiou":
+		return f"{value[:-1]}ies"
+
+	if value.endswith(("s", "x", "ch", "sh")):
+		return f"{value}es"
+
+	return f"{value}s"
 
 
 if __name__ == "__main__":
