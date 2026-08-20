@@ -5,8 +5,25 @@ from typing import Any
 
 
 RESET: str = "\033[0m"
-GREEN: str = "\033[32m"
-GREY: str = "\033[90m"
+COLOR_CODES: dict[str, str] = {
+	"default": "",
+	"black": "\033[30m",
+	"red": "\033[31m",
+	"green": "\033[32m",
+	"yellow": "\033[33m",
+	"blue": "\033[34m",
+	"magenta": "\033[35m",
+	"cyan": "\033[36m",
+	"white": "\033[37m",
+	"grey": "\033[90m",
+}
+
+
+@dataclass(frozen=True)
+class ColorScheme:
+	standard_text_color: str = "default"
+	quantity_color: str = "green"
+	omitted_ingredient_color: str = "grey"
 
 
 @dataclass(frozen=True)
@@ -31,11 +48,12 @@ def build_shopping_list(
 	recipe: dict[str, Any],
 	batch_size: float,
 	include_on_hand: bool,
+	append_short_name: bool = True,
 ) -> ShoppingList:
 	items: list[ShoppingListItem] = []
 	included_items: list[ShoppingListItem] = []
 	omitted_items: list[ShoppingListItem] = []
-	short_name: str | None = recipe.get("short_name")
+	short_name: str | None = recipe.get("short_name") if append_short_name else None
 
 	for ingredient in recipe["ingredients"]:
 		item: ShoppingListItem = ShoppingListItem(
@@ -63,42 +81,65 @@ def build_shopping_list(
 
 def render_shopping_list(
 	shopping_list: ShoppingList,
-	use_color: bool = True,
+	color_scheme: ColorScheme | None = None,
 	include_omitted: bool = False,
 ) -> str:
+	colors: ColorScheme = color_scheme or ColorScheme()
+	items: list[ShoppingListItem] = shopping_list.included_items
+	if include_omitted:
+		items = shopping_list.included_items + shopping_list.omitted_items
+	prefix_width: int = max((len(format_item_prefix(item)) for item in items), default=0)
 	lines: list[str] = [
-		f"{shopping_list.recipe_name} ({format_number(shopping_list.batch_size)} {pluralize_phrase('batch', shopping_list.batch_size)})",
+		style_text(
+			f"{shopping_list.recipe_name} ({format_number(shopping_list.batch_size)} {pluralize_phrase('batch', shopping_list.batch_size)})",
+			colors.standard_text_color,
+		),
 		"",
 	]
 
 	for item in shopping_list.included_items:
-		lines.append(f"- {format_item(item, use_color)}")
+		lines.append(style_text(f"- {format_item(item, prefix_width, colors)}", colors.standard_text_color))
 
 	if not include_omitted:
 		return "\n".join(lines)
 
 	for item in shopping_list.omitted_items:
-		line: str = f"x {format_item(item, use_color=False)}"
-		if use_color:
-			line = colorize(line, GREY)
-		lines.append(line)
+		lines.append(style_text(f"x {format_item(item, prefix_width, None)}", colors.omitted_ingredient_color))
 
 	return "\n".join(lines)
 
 
-def format_item(item: ShoppingListItem, use_color: bool = True) -> str:
+def format_item(
+	item: ShoppingListItem,
+	prefix_width: int,
+	color_scheme: ColorScheme | None = None,
+) -> str:
 	tag: str = f" [{item.tag}]" if item.tag is not None else ""
-	quantity: str = format_number(item.quantity)
-	if use_color:
-		quantity = colorize(quantity, GREEN)
+	prefix: str = format_item_prefix(item)
+	padded_prefix: str = prefix.ljust(prefix_width)
+	if color_scheme is not None:
+		padded_prefix = style_text(padded_prefix, color_scheme.quantity_color)
 
+	name: str = item.name
 	if item.unit is None:
-		return f"{quantity} {pluralize_phrase(item.name, item.quantity)}{tag}"
+		name = pluralize_phrase(item.name, item.quantity)
 
-	return f"{quantity} {pluralize_phrase(item.unit, item.quantity)} {item.name}{tag}"
+	return f"{padded_prefix} {name}{tag}"
 
 
-def colorize(value: str, color: str) -> str:
+def format_item_prefix(item: ShoppingListItem) -> str:
+	quantity: str = format_number(item.quantity)
+	if item.unit is None:
+		return quantity
+
+	return f"{quantity} {pluralize_phrase(item.unit, item.quantity)}"
+
+
+def style_text(value: str, color_name: str) -> str:
+	color: str = COLOR_CODES[color_name]
+	if color == "":
+		return value
+
 	return f"{color}{value}{RESET}"
 
 

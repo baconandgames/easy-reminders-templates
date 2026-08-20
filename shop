@@ -6,7 +6,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from src.formatter import build_shopping_list, format_number, render_shopping_list
+from src.config import Config, ConfigLoadError, load_config
+from src.formatter import ColorScheme, build_shopping_list, format_number, render_shopping_list
 from src.recipes import RecipeLoadError, find_recipe_by_short_name, load_recipes
 
 
@@ -19,6 +20,12 @@ def main() -> int:
 	args: argparse.Namespace = parser.parse_args()
 
 	project_dir: Path = Path(__file__).resolve().parent
+
+	try:
+		config: Config = load_config(project_dir / "config.json")
+	except ConfigLoadError as error:
+		print(f"Error: {error}", file=sys.stderr)
+		return 1
 
 	try:
 		recipes: dict[str, dict[str, Any]] = load_recipes(project_dir / "recipes.json")
@@ -43,9 +50,19 @@ def main() -> int:
 
 	batch_size: float = prompt_for_batch_size(recipe)
 	include_on_hand: bool = prompt_for_include_on_hand()
-	shopping_list = build_shopping_list(recipe, batch_size, include_on_hand)
+	shopping_list = build_shopping_list(
+		recipe,
+		batch_size,
+		include_on_hand,
+		append_short_name=config.append_short_name,
+	)
 
-	print(render_shopping_list(shopping_list, include_omitted=not include_on_hand))
+	color_scheme: ColorScheme = ColorScheme(
+		standard_text_color=config.standard_text_color,
+		quantity_color=config.quantity_color,
+		omitted_ingredient_color=config.omitted_ingredient_color,
+	)
+	print(render_shopping_list(shopping_list, color_scheme=color_scheme, include_omitted=not include_on_hand))
 
 	return 0
 

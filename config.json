@@ -1,0 +1,6 @@
+{
+  "append_short_name": true,
+  "standard_text_color": "default",
+  "quantity_color": "green",
+  "omitted_ingredient_color": "grey"
+}
