@@ -1,0 +1,104 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import argparse
+import sys
+from pathlib import Path
+from typing import Any
+
+from src.recipes import RecipeLoadError, find_recipe_by_short_name, load_recipes
+
+
+def main() -> int:
+	parser: argparse.ArgumentParser = argparse.ArgumentParser(
+		prog="shop",
+		description="Generate a shopping list from a recipe.",
+	)
+	parser.add_argument("short_name", nargs="?", help="recipe short name")
+	args: argparse.Namespace = parser.parse_args()
+
+	project_dir: Path = Path(__file__).resolve().parent
+
+	try:
+		recipes: dict[str, dict[str, Any]] = load_recipes(project_dir / "recipes.json")
+	except RecipeLoadError as error:
+		print(f"Error: {error}", file=sys.stderr)
+		return 1
+
+	if args.short_name is None:
+		recipe = select_recipe(recipes)
+	else:
+		try:
+			match: tuple[str, dict[str, Any]] | None = find_recipe_by_short_name(recipes, args.short_name)
+		except RecipeLoadError as error:
+			print(f"Error: {error}", file=sys.stderr)
+			return 1
+
+		if match is None:
+			print(f'Error: no recipe found with short name "{args.short_name}".', file=sys.stderr)
+			return 1
+
+		_recipe_id, recipe = match
+
+	batch_size: float = prompt_for_batch_size(recipe)
+
+	print(f"{recipe['name']} ({format_number(batch_size)} batch)")
+	return 0
+
+
+def select_recipe(recipes: dict[str, dict[str, Any]]) -> dict[str, Any]:
+	recipe_options: list[dict[str, Any]] = list(recipes.values())
+
+	print("Available recipes:")
+	for index, recipe in enumerate(recipe_options, start=1):
+		short_name: str = recipe.get("short_name", recipe["name"])
+		print(f"{index}. {short_name}: {recipe['name']}")
+
+	while True:
+		selection: str = input("Select a recipe: ").strip()
+		if selection == "":
+			print("Enter a recipe number.")
+			continue
+
+		try:
+			selected_index: int = int(selection)
+		except ValueError:
+			print("Enter a recipe number.")
+			continue
+
+		if 1 <= selected_index <= len(recipe_options):
+			return recipe_options[selected_index - 1]
+
+		print(f"Enter a number from 1 to {len(recipe_options)}.")
+
+
+def prompt_for_batch_size(recipe: dict[str, Any]) -> float:
+	default_batch: float = float(recipe["default_batch"])
+	default_display: str = format_number(default_batch)
+
+	while True:
+		selection: str = input(f"Batch size [{default_display}]: ").strip()
+		if selection == "":
+			return default_batch
+
+		try:
+			batch_size: float = float(selection)
+		except ValueError:
+			print("Enter a positive number.")
+			continue
+
+		if batch_size > 0:
+			return batch_size
+
+		print("Enter a positive number.")
+
+
+def format_number(value: float) -> str:
+	if value.is_integer():
+		return str(int(value))
+
+	return str(value)
+
+
+if __name__ == "__main__":
+	raise SystemExit(main())
