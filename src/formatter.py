@@ -4,6 +4,10 @@ from dataclasses import dataclass
 from typing import Any
 
 
+RESET: str = "\033[0m"
+GREEN: str = "\033[32m"
+
+
 @dataclass(frozen=True)
 class ShoppingListItem:
 	name: str
@@ -52,25 +56,32 @@ def build_shopping_list(
 	)
 
 
-def render_shopping_list(shopping_list: ShoppingList) -> str:
+def render_shopping_list(shopping_list: ShoppingList, use_color: bool = True) -> str:
 	lines: list[str] = [
 		f"{shopping_list.recipe_name} ({format_number(shopping_list.batch_size)} {pluralize_phrase('batch', shopping_list.batch_size)})",
 		"",
 	]
 
 	for item in shopping_list.included_items:
-		lines.append(f"- {format_item(item)}")
+		lines.append(f"- {format_item(item, use_color)}")
 
 	return "\n".join(lines)
 
 
-def format_item(item: ShoppingListItem) -> str:
+def format_item(item: ShoppingListItem, use_color: bool = True) -> str:
 	tag: str = f" [{item.tag}]" if item.tag is not None else ""
+	quantity: str = format_number(item.quantity)
+	if use_color:
+		quantity = colorize(quantity, GREEN)
 
 	if item.unit is None:
-		return f"{format_number(item.quantity)} {pluralize_phrase(item.name, item.quantity)}{tag}"
+		return f"{quantity} {pluralize_phrase(item.name, item.quantity)}{tag}"
 
-	return f"{format_number(item.quantity)} {pluralize_phrase(item.unit, item.quantity)} {item.name}{tag}"
+	return f"{quantity} {pluralize_phrase(item.unit, item.quantity)} {item.name}{tag}"
+
+
+def colorize(value: str, color: str) -> str:
+	return f"{color}{value}{RESET}"
 
 
 def format_number(value: float) -> str:

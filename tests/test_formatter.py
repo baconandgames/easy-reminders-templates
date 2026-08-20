@@ -46,4 +46,4 @@ def test_render_shopping_list_includes_scaled_items() -> None:
 
 	shopping_list = build_shopping_list(recipe, 2, include_on_hand=False)
 
-	assert render_shopping_list(shopping_list) == "Test Recipe (2 batches)\n\n- 2 Apples [Test]"
+	assert render_shopping_list(shopping_list, use_color=False) == "Test Recipe (2 batches)\n\n- 2 Apples [Test]"
