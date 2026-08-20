@@ -5,6 +5,7 @@ from typing import Any
 
 
 RESET: str = "\033[0m"
+ITEM_NAME_GAP: int = 5
 COLOR_CODES: dict[str, str] = {
 	"default": "",
 	"black": "\033[30m",
@@ -95,6 +96,7 @@ def render_shopping_list(
 			colors.standard_text_color,
 		),
 		"",
+		style_text("Included:", colors.standard_text_color),
 	]
 
 	for item in shopping_list.included_items:
@@ -103,6 +105,8 @@ def render_shopping_list(
 	if not include_omitted:
 		return "\n".join(lines)
 
+	lines.append("")
+	lines.append(style_text("Omitted:", colors.omitted_ingredient_color))
 	for item in shopping_list.omitted_items:
 		lines.append(style_text(f"x {format_item(item, prefix_width, None)}", colors.omitted_ingredient_color))
 
@@ -114,7 +118,7 @@ def format_item(
 	prefix_width: int,
 	color_scheme: ColorScheme | None = None,
 ) -> str:
-	tag: str = f" [{item.tag}]" if item.tag is not None else ""
+	tag: str = f" [{item.tag}]" if item.tag else ""
 	prefix: str = format_item_prefix(item)
 	padded_prefix: str = prefix.ljust(prefix_width)
 	if color_scheme is not None:
@@ -124,7 +128,7 @@ def format_item(
 	if item.unit is None:
 		name = pluralize_phrase(item.name, item.quantity)
 
-	return f"{padded_prefix} {name}{tag}"
+	return f"{padded_prefix}{' ' * ITEM_NAME_GAP}{name}{tag}"
 
 
 def format_item_prefix(item: ShoppingListItem) -> str:
