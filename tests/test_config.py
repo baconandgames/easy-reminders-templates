@@ -17,16 +17,17 @@ def test_load_config_uses_defaults_when_file_is_missing() -> None:
 	assert config.hidden_apple_reminders_list_ids == []
 	assert config.append_short_name is True
 	assert config.include_on_hand_default is False
-	assert config.standard_text_color == "white"
-	assert config.quantity_color == "green"
-	assert config.omitted_ingredient_color == "grey"
+	assert config.standard_text_color == "#f2f0ea"
+	assert config.quantity_color == "#37b7f0"
+	assert config.selection_color == "#ff4b1f"
+	assert config.omitted_ingredient_color == "#777777"
 
 
 def test_load_config_reads_values() -> None:
 	with TemporaryDirectory() as directory:
 		path: Path = Path(directory) / "config.json"
 		path.write_text(
-			'{"target_app": "apple_reminders", "delivery_mode": "create", "apple_reminders_list_id": "abc123", "apple_reminders_list_name": "Shared Grocery", "hidden_apple_reminders_list_ids": ["list-1", "list-2"], "append_short_name": false, "include_on_hand_default": true, "standard_text_color": "white", "quantity_color": "cyan", "omitted_ingredient_color": "grey"}',
+			'{"target_app": "apple_reminders", "delivery_mode": "create", "apple_reminders_list_id": "abc123", "apple_reminders_list_name": "Shared Grocery", "hidden_apple_reminders_list_ids": ["list-1", "list-2"], "append_short_name": false, "include_on_hand_default": true, "standard_text_color": "white", "quantity_color": "#37B7F0", "selection_color": "red", "omitted_ingredient_color": "grey"}',
 			encoding="utf-8",
 		)
 
@@ -39,7 +40,8 @@ def test_load_config_reads_values() -> None:
 	assert config.append_short_name is False
 	assert config.include_on_hand_default is True
 	assert config.standard_text_color == "white"
-	assert config.quantity_color == "cyan"
+	assert config.quantity_color == "#37b7f0"
+	assert config.selection_color == "red"
 	assert config.omitted_ingredient_color == "grey"
 
 
@@ -56,17 +58,14 @@ def test_load_config_rejects_invalid_boolean_values() -> None:
 			raise AssertionError("Expected ConfigLoadError")
 
 
-def test_load_config_rejects_invalid_color_values() -> None:
+def test_load_config_falls_back_for_invalid_color_values() -> None:
 	with TemporaryDirectory() as directory:
 		path: Path = Path(directory) / "config.json"
 		path.write_text('{"quantity_color": "orange"}', encoding="utf-8")
 
-		try:
-			load_config(path)
-		except ConfigLoadError as error:
-			assert 'Config value "quantity_color" has unsupported color "orange".' == str(error)
-		else:
-			raise AssertionError("Expected ConfigLoadError")
+		config = load_config(path)
+
+	assert config.quantity_color == "#37b7f0"
 
 
 def test_save_config_writes_values() -> None:
@@ -86,6 +85,7 @@ def test_save_config_writes_values() -> None:
 	assert "delivery_mode" not in data
 	assert data["apple_reminders_list_name"] == "Shared Grocery"
 	assert data["hidden_apple_reminders_list_ids"] == ["list-1"]
+	assert data["selection_color"] == "#ff4b1f"
 
 
 def test_load_config_rejects_invalid_hidden_reminders_list_ids() -> None:

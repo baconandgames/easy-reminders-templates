@@ -169,14 +169,16 @@ text editor.
   "hidden_apple_reminders_list_ids": [],
   "append_short_name": true,
   "include_on_hand_default": false,
-  "standard_text_color": "white",
-  "quantity_color": "green",
-  "omitted_ingredient_color": "grey"
+  "standard_text_color": "#f2f0ea",
+  "quantity_color": "#37b7f0",
+  "selection_color": "#ff4b1f",
+  "omitted_ingredient_color": "#777777"
 }
 ```
 
 Supported color values:
 
+- Hex colors in `#rrggbb` format, when supported by your terminal.
 - `black`
 - `red`
 - `green`
@@ -187,7 +189,7 @@ Supported color values:
 - `white`
 - `grey`
 
-Invalid config values raise a clear error when `shop` runs.
+Invalid color values fall back to the default for that setting.
 
 Supported target app values:
 

@@ -3,28 +3,23 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from recipe_shopper.colors import terminal_color_code
+from recipe_shopper.config import (
+	DEFAULT_OMITTED_INGREDIENT_COLOR,
+	DEFAULT_QUANTITY_COLOR,
+	DEFAULT_STANDARD_TEXT_COLOR,
+)
+
 
 RESET: str = "\033[0m"
 ITEM_NAME_GAP: int = 5
-COLOR_CODES: dict[str, str] = {
-	"default": "",
-	"black": "\033[30m",
-	"red": "\033[31m",
-	"green": "\033[32m",
-	"yellow": "\033[33m",
-	"blue": "\033[34m",
-	"magenta": "\033[35m",
-	"cyan": "\033[36m",
-	"white": "\033[37m",
-	"grey": "\033[90m",
-}
 
 
 @dataclass(frozen=True)
 class ColorScheme:
-	standard_text_color: str = "default"
-	quantity_color: str = "green"
-	omitted_ingredient_color: str = "grey"
+	standard_text_color: str = DEFAULT_STANDARD_TEXT_COLOR
+	quantity_color: str = DEFAULT_QUANTITY_COLOR
+	omitted_ingredient_color: str = DEFAULT_OMITTED_INGREDIENT_COLOR
 
 
 @dataclass(frozen=True)
@@ -162,7 +157,7 @@ def format_delivery_item(item: ShoppingListItem) -> str:
 
 
 def style_text(value: str, color_name: str) -> str:
-	color: str = COLOR_CODES[color_name]
+	color: str = terminal_color_code(color_name)
 	if color == "":
 		return value
 

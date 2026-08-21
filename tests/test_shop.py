@@ -32,7 +32,7 @@ def test_resolve_config_path_creates_user_config(monkeypatch, tmp_path) -> None:
 	config_path = shop_script.resolve_config_path(project_dir)
 
 	assert config_path == user_data_dir / "config.json"
-	assert load_config(config_path).standard_text_color == "white"
+	assert load_config(config_path).standard_text_color == "#f2f0ea"
 
 
 def test_resolve_recipes_path_prefers_project_recipes(tmp_path) -> None:
@@ -212,10 +212,10 @@ def test_render_final_ingredient_list_excludes_recipe_title() -> None:
 	display_list = shop_script.without_item_tags(updated)
 
 	assert shop_script.render_final_ingredient_list(display_list, shop_script.ColorScheme()) == (
-		"Final Ingredient List\n"
-		"------------------\n"
-		"- \033[32m2    \033[0m     Apples\n"
-		"- \033[32m2 tsp\033[0m     Salt"
+		"\033[38;2;242;240;234mFinal Ingredient List\033[0m\n"
+		"\033[38;2;242;240;234m------------------\033[0m\n"
+		"\033[38;2;242;240;234m- \033[38;2;55;183;240m2    \033[0m     Apples\033[0m\n"
+		"\033[38;2;242;240;234m- \033[38;2;55;183;240m2 tsp\033[0m     Salt\033[0m"
 	)
 
 
@@ -281,6 +281,27 @@ def test_select_delivery_target_defaults_to_configured_list_and_details_duplicat
 	assert captured["choices"][2].title == "Test (0)"
 	assert captured["default"] == captured["choices"][1]
 	assert captured["instruction"] == "2 lists omitted per config.json"
+
+
+def test_select_delivery_target_can_abort(monkeypatch) -> None:
+	options = [
+		DeliveryTargetOption(
+			identifier="list-1",
+			name="General",
+			source="iCloud",
+			item_count=1,
+			sample_items=[],
+		),
+	]
+
+	monkeypatch.setattr(shop_script.questionary, "select", lambda *args, **kwargs: FakePrompt(shop_script.ABORT_CHOICE))
+
+	try:
+		shop_script.select_delivery_target("General", options)
+	except shop_script.ShopAbort:
+		pass
+	else:
+		raise AssertionError("Expected ShopAbort")
 
 
 def test_edit_reminders_list_visibility_stores_hidden_ids(monkeypatch) -> None:
@@ -410,8 +431,8 @@ def test_edit_color_settings_updates_selected_color_and_returns_to_color_menu(mo
 		"\nUsed for quantities and units in terminal ingredient lists.\n"
 		"[ENTER to save | ESC to return | Ctrl-C to quit]\n"
 	)
-	assert captured[1]["choices"][0].title == [("class:color-black", "black")]
-	assert captured[1]["choices"][2].title == [("class:color-green", "green (default)")]
+	assert captured[1]["choices"][0].title == [("#37b7f0", "#37b7f0 (default)")]
+	assert captured[1]["choices"][3].title == [("class:color-green", "green")]
 	assert captured[2]["qmark"] == "Colors"
 
 
@@ -435,19 +456,19 @@ def test_color_choice_displays_color_name_with_matching_style() -> None:
 
 
 def test_color_choice_marks_default_color() -> None:
-	choice = shop_script.color_choice("white", is_default=True)
+	choice = shop_script.color_choice("#f2f0ea", is_default=True)
 
-	assert choice.title == [("class:color-white", "white (default)")]
-	assert choice.value == "white"
+	assert choice.title == [("#f2f0ea", "#f2f0ea (default)")]
+	assert choice.value == "#f2f0ea"
 
 
 def test_format_config_color_value_marks_setting_default() -> None:
-	assert shop_script.format_config_color_value(Config(standard_text_color="white"), "standard_text_color") == (
-		"white (default)"
+	assert shop_script.format_config_color_value(Config(standard_text_color="#f2f0ea"), "standard_text_color") == (
+		"#f2f0ea (default)"
 	)
 	assert shop_script.format_config_color_value(Config(standard_text_color="cyan"), "standard_text_color") == "cyan"
 	assert shop_script.format_config_color_value(Config(standard_text_color="default"), "standard_text_color") == (
-		"white (default)"
+		"#f2f0ea (default)"
 	)
 
 
@@ -543,7 +564,7 @@ def test_format_option_values() -> None:
 def test_print_selected_template_shows_recipe_selection(capsys) -> None:
 	shop_script.print_selected_template("Classic Chili")
 
-	assert capsys.readouterr().out == "Select a Recipe  \033[33mClassic Chili\033[0m\n"
+	assert capsys.readouterr().out == "Select a Recipe  \033[38;2;255;75;31mClassic Chili\033[0m\n"
 
 
 def test_format_omitted_list_instruction_pluralizes_lists() -> None:

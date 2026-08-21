@@ -168,4 +168,9 @@ def test_render_shopping_list_colors_quantity_and_unit_together() -> None:
 
 	shopping_list = build_shopping_list(recipe, 1, include_on_hand=False)
 
-	assert render_shopping_list(shopping_list) == "Test Recipe (1 batch)\n\nIncluded\n-------------------------\n- \033[32m1.5 tsp\033[0m     Salt [Test]"
+	assert render_shopping_list(shopping_list) == (
+		"\033[38;2;242;240;234mTest Recipe (1 batch)\033[0m\n\n"
+		"\033[38;2;242;240;234mIncluded\033[0m\n"
+		"\033[38;2;242;240;234m-------------------------\033[0m\n"
+		"\033[38;2;242;240;234m- \033[38;2;55;183;240m1.5 tsp\033[0m     Salt [Test]\033[0m"
+	)

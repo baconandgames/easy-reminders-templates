@@ -24,6 +24,7 @@ except ModuleNotFoundError:
 		"Error: missing dependency questionary. Run: python3 -m venv .venv && .venv/bin/python -m pip install -r requirements.txt"
 	)
 
+from recipe_shopper.colors import NAMED_COLORS, normalize_color, prompt_color_style, terminal_color_code
 from recipe_shopper.config import Config, ConfigLoadError, load_config, save_config
 from recipe_shopper.delivery import AppleRemindersTarget, DeliveryError, DeliveryResult, DeliveryTargetOption, get_delivery_target
 from recipe_shopper.formatter import (
@@ -31,10 +32,11 @@ from recipe_shopper.formatter import (
 	ShoppingList,
 	ShoppingListItem,
 	build_shopping_list,
+	calculate_line_width,
 	format_item,
 	format_item_prefix,
 	format_number,
-	render_shopping_list,
+	style_text,
 )
 from recipe_shopper.recipes import RecipeLoadError, find_recipe_by_short_name, load_recipes
 
@@ -54,18 +56,6 @@ COLOR_MENU_INSTRUCTION: str = "\n[ENTER to edit | ESC to return | Ctrl-C to quit
 COLOR_PICKER_CONTROLS: str = "[ENTER to save | ESC to return | Ctrl-C to quit]"
 OPTIONS_MENU_INSTRUCTION: str = "\n[ENTER to edit | ESC to return | Ctrl-C to quit]\n"
 TRUNCATED_SAMPLE_LENGTH: int = 11
-PROMPT_COLORS: dict[str, str] = {
-	"default": "",
-	"black": "ansiblack",
-	"red": "ansired",
-	"green": "ansigreen",
-	"yellow": "ansiyellow",
-	"blue": "ansiblue",
-	"magenta": "ansimagenta",
-	"cyan": "ansicyan",
-	"white": "ansiwhite",
-	"grey": "ansibrightblack",
-}
 CONFIG_COLOR_OPTIONS: tuple[str, ...] = (
 	"black",
 	"red",
@@ -78,13 +68,15 @@ CONFIG_COLOR_OPTIONS: tuple[str, ...] = (
 	"grey",
 )
 CONFIG_COLOR_DEFAULTS: dict[str, str] = {
-	"standard_text_color": "white",
-	"quantity_color": "green",
-	"omitted_ingredient_color": "grey",
+	"standard_text_color": Config.standard_text_color,
+	"quantity_color": Config.quantity_color,
+	"selection_color": Config.selection_color,
+	"omitted_ingredient_color": Config.omitted_ingredient_color,
 }
 COLOR_SETTING_INSTRUCTIONS: dict[str, str] = {
 	"standard_text_color": "Used for regular terminal output text.",
 	"quantity_color": "Used for quantities and units in terminal ingredient lists.",
+	"selection_color": "Used for active menu rows and selected prompt answers.",
 	"omitted_ingredient_color": "Used for ingredients excluded from the final list.",
 }
 APP_NAME: str = "Easy Reminder Templates"
@@ -197,7 +189,7 @@ def main() -> int:
 
 	if args.short_name == "config":
 		try:
-			return run_config_editor(config_path, config, prompt_style=build_prompt_style(config.quantity_color))
+			return run_config_editor(config_path, config, prompt_style=build_prompt_style(config.selection_color))
 		except ShopAbort:
 			print("Aborted.")
 			return 130
@@ -212,7 +204,7 @@ def main() -> int:
 		return 1
 
 	try:
-		prompt_style = build_prompt_style(config.quantity_color)
+		prompt_style = build_prompt_style(config.selection_color)
 		print()
 		print(style_instruction(START_INSTRUCTION))
 		print()
@@ -230,7 +222,7 @@ def main() -> int:
 				return 1
 
 			_recipe_id, recipe = match
-			print_selected_template(recipe["name"])
+			print_selected_template(recipe["name"], config.selection_color)
 
 		batch_size: float = prompt_for_batch_size(recipe, prompt_style=prompt_style)
 		include_on_hand: bool = prompt_for_include_on_hand(
@@ -274,7 +266,7 @@ def main() -> int:
 				target_name,
 				options,
 				omitted_count,
-				prompt_style=build_prompt_style(config.quantity_color),
+				prompt_style=build_prompt_style(config.selection_color),
 			),
 		).create_list(shopping_list, config)
 	except ShopAbort:
@@ -448,6 +440,10 @@ def edit_color_settings(config_path: Path, config: Config, prompt_style=None) ->
 					value="quantity_color",
 				),
 				questionary.Choice(
+					title=f"Selection Color: {format_config_color_value(config, 'selection_color')}",
+					value="selection_color",
+				),
+				questionary.Choice(
 					title=f"Omitted Ingredient Color: {format_config_color_value(config, 'omitted_ingredient_color')}",
 					value="omitted_ingredient_color",
 				),
@@ -464,10 +460,16 @@ def edit_color_settings(config_path: Path, config: Config, prompt_style=None) ->
 			return config
 
 		current_color: str = normalize_config_color(setting_name, getattr(config, setting_name))
-		choices: list[questionary.Choice] = [
-			color_choice(color, is_default=color == CONFIG_COLOR_DEFAULTS[setting_name])
-			for color in CONFIG_COLOR_OPTIONS
-		]
+		choice_values: list[str] = [CONFIG_COLOR_DEFAULTS[setting_name], *CONFIG_COLOR_OPTIONS]
+		if current_color not in choice_values:
+			choice_values.insert(0, current_color)
+		choices: list[questionary.Choice] = []
+		seen_color_values: set[str] = set()
+		for color in choice_values:
+			if color in seen_color_values:
+				continue
+			seen_color_values.add(color)
+			choices.append(color_choice(color, is_default=color == CONFIG_COLOR_DEFAULTS[setting_name]))
 		default_choice: questionary.Choice | None = next(
 			(choice for choice in choices if choice.value == current_color),
 			None,
@@ -674,12 +676,16 @@ def prompt_for_ingredient_items(shopping_list: ShoppingList, prompt_style=None) 
 
 
 def render_final_ingredient_list(shopping_list: ShoppingList, color_scheme: ColorScheme) -> str:
-	full_render: str = render_shopping_list(shopping_list, color_scheme=color_scheme)
-	_lines_before_included, separator, included_section = full_render.partition("\n\nIncluded\n")
-	if separator == "":
-		return full_render
+	prefix_width: int = max((len(format_item_prefix(item)) for item in shopping_list.included_items), default=0)
+	line_width: int = calculate_line_width(shopping_list.included_items, prefix_width)
+	lines: list[str] = [
+		style_text("Final Ingredient List", color_scheme.standard_text_color),
+		style_text("-" * line_width, color_scheme.standard_text_color),
+	]
+	for item in shopping_list.included_items:
+		lines.append(style_text(f"- {format_item(item, prefix_width, color_scheme)}", color_scheme.standard_text_color))
 
-	return f"Final Ingredient List\n{included_section}"
+	return "\n".join(lines)
 
 
 def without_item_tags(shopping_list: ShoppingList) -> ShoppingList:
@@ -756,14 +762,26 @@ def back_config_choice():
 
 def color_choice(color_name: str, is_default: bool = False):
 	label: str = f"{color_name} (default)" if is_default else color_name
-	return questionary.Choice(title=[(f"class:color-{color_name}", label)], value=color_name)
+	style: str = color_title_style(color_name)
+	return questionary.Choice(title=[(style, label)], value=color_name)
+
+
+def color_title_style(color_name: str) -> str:
+	if color_name in NAMED_COLORS:
+		return f"class:color-{color_name}"
+
+	style: str = prompt_color_style(color_name)
+	if style != "":
+		return style
+
+	return "class:text"
 
 
 def normalize_config_color(setting_name: str, color_name: str) -> str:
 	if color_name == "default":
 		return CONFIG_COLOR_DEFAULTS[setting_name]
 
-	return color_name
+	return normalize_color(color_name, CONFIG_COLOR_DEFAULTS[setting_name])
 
 
 def format_config_color_value(config: Config, setting_name: str) -> str:
@@ -800,8 +818,13 @@ def style_instruction(value: str) -> str:
 	return f"\033[90m{value}\033[0m"
 
 
-def print_selected_template(template_name: str) -> None:
-	print(f"Select a Recipe  \033[33m{template_name}\033[0m")
+def print_selected_template(template_name: str, color_name: str = Config.selection_color) -> None:
+	color: str = terminal_color_code(normalize_color(color_name, Config.selection_color))
+	if color == "":
+		print(f"Select a Recipe  {template_name}")
+		return
+
+	print(f"Select a Recipe  {color}{template_name}\033[0m")
 
 
 def validate_batch_size(selection: str) -> bool | str:
@@ -824,16 +847,17 @@ def validate_batch_size(selection: str) -> bool | str:
 
 
 def build_prompt_style(color_name: str):
-	color: str = PROMPT_COLORS[color_name]
+	color: str = prompt_color_style(color_name)
 	styles: dict[str, str] = {
 		"abort": "ansired noreverse noinherit",
-		"selected": "ansiyellow noreverse noinherit",
-		"answer": "ansiyellow noinherit",
+		"selected": f"{color} noreverse noinherit" if color != "" else "ansiyellow noreverse noinherit",
+		"answer": f"{color} noinherit" if color != "" else "ansiyellow noinherit",
 		"instruction": "ansibrightblack",
 		"qmark": "bold",
 		"question": "bold",
 	}
-	for color_option, ansi_color in PROMPT_COLORS.items():
+	for color_option in NAMED_COLORS:
+		ansi_color: str = prompt_color_style(color_option)
 		if ansi_color != "":
 			styles[f"color-{color_option}"] = f"{ansi_color} noinherit"
 	if color != "":

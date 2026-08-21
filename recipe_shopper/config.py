@@ -5,8 +5,14 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from recipe_shopper.colors import normalize_color
+
 
 SUPPORTED_TARGET_APPS: set[str] = {"apple_reminders"}
+DEFAULT_STANDARD_TEXT_COLOR: str = "#f2f0ea"
+DEFAULT_QUANTITY_COLOR: str = "#37b7f0"
+DEFAULT_SELECTION_COLOR: str = "#ff4b1f"
+DEFAULT_OMITTED_INGREDIENT_COLOR: str = "#777777"
 
 
 @dataclass(frozen=True)
@@ -17,9 +23,10 @@ class Config:
 	hidden_apple_reminders_list_ids: list[str] = field(default_factory=list)
 	append_short_name: bool = True
 	include_on_hand_default: bool = False
-	standard_text_color: str = "white"
-	quantity_color: str = "green"
-	omitted_ingredient_color: str = "grey"
+	standard_text_color: str = DEFAULT_STANDARD_TEXT_COLOR
+	quantity_color: str = DEFAULT_QUANTITY_COLOR
+	selection_color: str = DEFAULT_SELECTION_COLOR
+	omitted_ingredient_color: str = DEFAULT_OMITTED_INGREDIENT_COLOR
 
 
 class ConfigLoadError(Exception):
@@ -58,6 +65,7 @@ def load_config(path: Path) -> Config:
 	include_on_hand_default: bool = _read_bool(raw_data, "include_on_hand_default", Config.include_on_hand_default)
 	standard_text_color: str = _read_color(raw_data, "standard_text_color", Config.standard_text_color)
 	quantity_color: str = _read_color(raw_data, "quantity_color", Config.quantity_color)
+	selection_color: str = _read_color(raw_data, "selection_color", Config.selection_color)
 	omitted_ingredient_color: str = _read_color(
 		raw_data,
 		"omitted_ingredient_color",
@@ -73,6 +81,7 @@ def load_config(path: Path) -> Config:
 		include_on_hand_default=include_on_hand_default,
 		standard_text_color=standard_text_color,
 		quantity_color=quantity_color,
+		selection_color=selection_color,
 		omitted_ingredient_color=omitted_ingredient_color,
 	)
 
@@ -87,6 +96,7 @@ def save_config(path: Path, config: Config) -> None:
 		"include_on_hand_default": config.include_on_hand_default,
 		"standard_text_color": config.standard_text_color,
 		"quantity_color": config.quantity_color,
+		"selection_color": config.selection_color,
 		"omitted_ingredient_color": config.omitted_ingredient_color,
 	}
 	path.write_text(f"{json.dumps(data, indent=2)}\n", encoding="utf-8")
@@ -142,20 +152,6 @@ def _read_target_app(raw_data: dict[str, Any], key: str, default: str) -> str:
 def _read_color(raw_data: dict[str, Any], key: str, default: str) -> str:
 	value: Any = raw_data.get(key, default)
 	if not isinstance(value, str):
-		raise ConfigLoadError(f'Config value "{key}" must be a color name.')
+		raise ConfigLoadError(f'Config value "{key}" must be a color name or hex color.')
 
-	if value not in {
-		"default",
-		"black",
-		"red",
-		"green",
-		"yellow",
-		"blue",
-		"magenta",
-		"cyan",
-		"white",
-		"grey",
-	}:
-		raise ConfigLoadError(f'Config value "{key}" has unsupported color "{value}".')
-
-	return value
+	return normalize_color(value, default)
