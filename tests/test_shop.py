@@ -133,6 +133,27 @@ def test_without_item_tags_removes_display_tags_without_mutating_source() -> Non
 	assert shopping_list.included_items[0].tag == "Test"
 
 
+def test_render_included_section_excludes_recipe_title() -> None:
+	recipe = {
+		"name": "Test Recipe",
+		"short_name": "Test",
+		"ingredients": [
+			{"name": "Apple", "quantity": 1, "always_on_hand": False},
+			{"name": "Salt", "quantity": 1, "unit": "tsp", "always_on_hand": True},
+		],
+	}
+	shopping_list = build_shopping_list(recipe, 2, include_on_hand=False)
+	updated = shop_script.include_selected_omitted_items(shopping_list, [0])
+	display_list = shop_script.without_item_tags(updated)
+
+	assert shop_script.render_included_section(display_list, shop_script.ColorScheme()) == (
+		"Final Ingredient List\n"
+		"------------------\n"
+		"- \033[32m2    \033[0m     Apples\n"
+		"- \033[32m2 tsp\033[0m     Salt"
+	)
+
+
 def test_checked_active_checkbox_row_uses_highlighted_style() -> None:
 	control = shop_script.questionary.prompts.common.InquirerControl(
 		[shop_script.questionary.Choice(title="Salt", value=0)],

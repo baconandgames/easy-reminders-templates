@@ -207,7 +207,12 @@ def main() -> int:
 		quantity_color=config.quantity_color,
 		omitted_ingredient_color=config.omitted_ingredient_color,
 	)
-	print(render_shopping_list(without_item_tags(shopping_list), color_scheme=color_scheme))
+	print(
+		render_shopping_list(
+			without_item_tags(shopping_list),
+			color_scheme=color_scheme,
+		).replace("\n\nIncluded\n", "\n\nIngredients to be Added\n", 1)
+	)
 	try:
 		if len(shopping_list.omitted_items) > 0:
 			selected_omitted_indexes: list[int] = prompt_for_omitted_items(
@@ -215,6 +220,9 @@ def main() -> int:
 				prompt_style=prompt_style,
 			)
 			shopping_list = include_selected_omitted_items(shopping_list, selected_omitted_indexes)
+			if len(selected_omitted_indexes) > 0:
+				print()
+				print(render_included_section(without_item_tags(shopping_list), color_scheme=color_scheme))
 	except ShopAbort:
 		print("Aborted.")
 		return 130
@@ -304,7 +312,7 @@ def prompt_for_include_on_hand(default: bool, prompt_style=None) -> bool:
 		choices=choices,
 		instruction=SELECT_INSTRUCTION,
 		pointer=">",
-		qmark="Include On-Hand Items",
+		qmark="Include All On-Hand Items",
 		style=prompt_style,
 	)
 	return require_selection(ask_or_abort(selection))
@@ -347,13 +355,22 @@ def prompt_for_omitted_items(shopping_list: ShoppingList, prompt_style=None) -> 
 		choices=choices,
 		instruction=OMITTED_INSTRUCTION,
 		pointer=">",
-		qmark="To Be Omitted",
+		qmark="Select Individual On-Hand Items",
 		style=prompt_style,
 	)
 	selection = ask_or_abort(selection)
 	selected_indexes = require_selection(selection)
-	print(f"\033[F\033[KTo Be Omitted  {style_answer(format_added_count(len(selected_indexes)))}")
+	print(f"\033[F\033[KSelect Individual On-Hand Items  {style_answer(format_added_count(len(selected_indexes)))}")
 	return selected_indexes
+
+
+def render_included_section(shopping_list: ShoppingList, color_scheme: ColorScheme) -> str:
+	full_render: str = render_shopping_list(shopping_list, color_scheme=color_scheme)
+	_lines_before_included, separator, included_section = full_render.partition("\n\nIncluded\n")
+	if separator == "":
+		return full_render
+
+	return f"Final Ingredient List\n{included_section}"
 
 
 def without_item_tags(shopping_list: ShoppingList) -> ShoppingList:
