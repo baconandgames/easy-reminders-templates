@@ -10,7 +10,10 @@ from typing import Any, Callable
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-import certifi
+try:
+	import certifi
+except ImportError:
+	certifi = None
 
 
 PACKAGE_NAME: str = "easy-reminder-templates"
@@ -100,7 +103,7 @@ def fetch_latest_release(
 
 
 def open_with_certifi(request: Request, timeout: float):
-	context = ssl.create_default_context(cafile=certifi.where())
+	context = ssl.create_default_context(cafile=certifi.where() if certifi is not None else None)
 	return urlopen(request, timeout=timeout, context=context)
 
 

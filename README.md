@@ -243,6 +243,9 @@ lists inside Reminders folders. `listkit` prompts you to choose from available
 lists, starts on the configured list name, and shows a few existing items only
 when multiple lists share the same name.
 
+At the reminder-list prompt, choose `[ + Create New List]` to create a new Apple
+Reminders list before adding the selected template items.
+
 When `apple_reminders_list_id` is set, it is preferred over
 `apple_reminders_list_name`.
 

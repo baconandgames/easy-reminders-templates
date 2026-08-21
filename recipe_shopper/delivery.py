@@ -10,6 +10,7 @@ from recipe_shopper.config import Config
 from recipe_shopper.formatter import ShoppingList, format_delivery_item
 
 TargetSelector = Callable[[str, list["DeliveryTargetOption"], int], "DeliveryTargetOption"]
+CREATE_NEW_LIST_IDENTIFIER: str = "__create_new_list__"
 
 
 @dataclass(frozen=True)
@@ -97,6 +98,33 @@ class AppleRemindersTarget:
 			for target in targets
 		]
 
+	def create_target(self, list_name: str) -> DeliveryTargetOption:
+		helper_path: Path = get_reminders_helper_path()
+		try:
+			result = self._runner(
+				["swift", str(helper_path), "create-list"],
+				input=list_name,
+				check=True,
+				capture_output=True,
+				text=True,
+			)
+		except subprocess.CalledProcessError as error:
+			message: str = error.stderr.strip() or f'Could not create Apple Reminders list "{list_name}".'
+			raise DeliveryError(message) from error
+
+		try:
+			target: dict[str, object] = json.loads(result.stdout)
+		except json.JSONDecodeError as error:
+			raise DeliveryError("Could not parse created Apple Reminders list.") from error
+
+		return DeliveryTargetOption(
+			identifier=str(target["id"]),
+			name=str(target["name"]),
+			source=str(target["source"]),
+			item_count=int(target["item_count"]),
+			sample_items=[str(item) for item in target.get("sample_items", [])],
+		)
+
 	def _resolve_list_target(self, config: Config) -> DeliveryTargetOption:
 		targets: list[DeliveryTargetOption] = self.list_targets()
 		visible_targets: list[DeliveryTargetOption] = [
@@ -104,11 +132,11 @@ class AppleRemindersTarget:
 		]
 		omitted_count: int = len(targets) - len(visible_targets)
 
-		if len(visible_targets) == 0:
-			raise DeliveryError("No Apple Reminders lists were found.")
-
 		if self._target_selector is not None:
 			return self._target_selector(config.apple_reminders_list_name, visible_targets, omitted_count)
+
+		if len(visible_targets) == 0:
+			raise DeliveryError("No Apple Reminders lists were found.")
 
 		if config.apple_reminders_list_id:
 			for target in visible_targets:

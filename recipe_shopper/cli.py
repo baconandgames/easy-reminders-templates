@@ -27,7 +27,14 @@ except ModuleNotFoundError:
 
 from recipe_shopper.colors import NAMED_COLORS, normalize_color, prompt_color_style, terminal_color_code
 from recipe_shopper.config import Config, ConfigLoadError, load_config, save_config
-from recipe_shopper.delivery import AppleRemindersTarget, DeliveryError, DeliveryResult, DeliveryTargetOption, get_delivery_target
+from recipe_shopper.delivery import (
+	AppleRemindersTarget,
+	CREATE_NEW_LIST_IDENTIFIER,
+	DeliveryError,
+	DeliveryResult,
+	DeliveryTargetOption,
+	get_delivery_target,
+)
 from recipe_shopper.formatter import (
 	ColorScheme,
 	ShoppingList,
@@ -58,7 +65,8 @@ from recipe_shopper.updates import (
 
 ABORT_COMMANDS: set[str] = {"q", "quit", "cancel", "abort"}
 ABORT_CHOICE: str = "__abort__"
-ABORT_TITLE: str = "[!] ABORT"
+ABORT_TITLE: str = "[ ! Abort ]"
+CREATE_NEW_LIST_TITLE: str = "[ + Create New List ]"
 EXIT_CONFIG_CHOICE: str = "__exit_config__"
 EXIT_CONFIG_TITLE: str = "Exit Config Menu"
 BACK_CONFIG_CHOICE: str = "__back_config__"
@@ -175,7 +183,7 @@ def configure_questionary_checkbox_rendering() -> None:
 
 		if self.show_selected:
 			answer = current.get_shortcut_title() if self.use_shortcuts else ""
-			answer += current.title if isinstance(current.title, str) else current.title[0][1]
+			answer += current.title if isinstance(current.title, str) else "".join(token[1] for token in current.title)
 			tokens.append(("class:text", f"  Answer: {answer}"))
 
 		show_description = self.show_description and current.description is not None
@@ -795,8 +803,6 @@ def edit_default_reminders_list(config: Config, prompt_style=None) -> Config:
 	visible_targets: list[DeliveryTargetOption] = [
 		target for target in targets if target.identifier not in config.hidden_apple_reminders_list_ids
 	]
-	if len(visible_targets) == 0:
-		raise DeliveryError("No visible Apple Reminders lists were found.")
 
 	target = select_delivery_target(
 		config.apple_reminders_list_name,
@@ -888,6 +894,7 @@ def select_delivery_target(
 		if default_choice is None and option.name == target_name:
 			default_choice = choice
 
+	choices.append(create_new_list_choice())
 	choices.append(abort_choice())
 	selection = questionary.select(
 		"",
@@ -898,7 +905,25 @@ def select_delivery_target(
 		qmark="Choose Reminder List",
 		style=prompt_style,
 	)
-	return require_selection(ask_or_abort(selection))
+	selected_target: DeliveryTargetOption = require_selection(ask_or_abort(selection))
+	if selected_target.identifier != CREATE_NEW_LIST_IDENTIFIER:
+		return selected_target
+
+	return prompt_for_new_delivery_target(prompt_style=prompt_style)
+
+
+def prompt_for_new_delivery_target(prompt_style=None) -> DeliveryTargetOption:
+	prompt = questionary.text(
+		"",
+		validate=validate_new_list_name,
+		qmark="New Reminder List",
+		style=prompt_style,
+	)
+	list_name: str = require_selection(ask_or_abort(prompt)).strip()
+	if list_name.casefold() in ABORT_COMMANDS:
+		raise ShopAbort()
+
+	return AppleRemindersTarget().create_target(list_name)
 
 
 def prompt_for_ingredient_items(shopping_list: ShoppingList, prompt_style=None) -> list[int]:
@@ -1006,7 +1031,23 @@ def format_omitted_list_instruction(omitted_count: int) -> str:
 
 
 def abort_choice():
-	return questionary.Choice(title=[("class:abort", ABORT_TITLE)], value=ABORT_CHOICE)
+	return questionary.Choice(
+		title=[("class:app-action", ABORT_TITLE)],
+		value=ABORT_CHOICE,
+	)
+
+
+def create_new_list_choice():
+	return questionary.Choice(
+		title=[("class:app-action", CREATE_NEW_LIST_TITLE)],
+		value=DeliveryTargetOption(
+			identifier=CREATE_NEW_LIST_IDENTIFIER,
+			name=CREATE_NEW_LIST_TITLE,
+			source="",
+			item_count=0,
+			sample_items=[],
+		),
+	)
 
 
 def exit_config_choice():
@@ -1067,6 +1108,13 @@ def format_bool_option(value: bool) -> str:
 	return "Yes" if value else "No"
 
 
+def validate_new_list_name(value: str) -> bool | str:
+	if value.strip() == "":
+		return "Enter a list name."
+
+	return True
+
+
 def format_color_setting_instruction(setting_name: str) -> str:
 	return f"\n{COLOR_SETTING_INSTRUCTIONS[setting_name]}\n{COLOR_PICKER_CONTROLS}\n"
 
@@ -1107,6 +1155,7 @@ def build_prompt_style(color_name: str):
 	color: str = prompt_color_style(color_name)
 	styles: dict[str, str] = {
 		"abort": "ansired noreverse noinherit",
+		"app-action": "#d56aa0 bold noreverse noinherit",
 		"selected": f"{color} noreverse noinherit" if color != "" else "ansiyellow noreverse noinherit",
 		"answer": f"{color} noinherit" if color != "" else "ansiyellow noinherit",
 		"instruction": "ansibrightblack",

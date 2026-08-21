@@ -285,11 +285,18 @@ def test_checked_active_checkbox_row_uses_highlighted_style() -> None:
 	assert ("class:selected", "Salt") not in tokens
 
 
-def test_abort_choice_uses_red_attention_label() -> None:
+def test_abort_choice_uses_app_action_label() -> None:
 	choice = shop_script.abort_choice()
 
-	assert choice.title == [("class:abort", "[!] ABORT")]
+	assert choice.title == [("class:app-action", "[ ! Abort ]")]
 	assert choice.value == shop_script.ABORT_CHOICE
+
+
+def test_create_new_list_choice_uses_bracketed_label() -> None:
+	choice = shop_script.create_new_list_choice()
+
+	assert choice.title == [("class:app-action", "[ + Create New List ]")]
+	assert choice.value.identifier == shop_script.CREATE_NEW_LIST_IDENTIFIER
 
 
 def test_select_delivery_target_defaults_to_configured_list_and_details_duplicates(monkeypatch) -> None:
@@ -330,8 +337,66 @@ def test_select_delivery_target_defaults_to_configured_list_and_details_duplicat
 	assert captured["choices"][0].title == "General (1)"
 	assert captured["choices"][1].title == "Test (6) - Bacon"
 	assert captured["choices"][2].title == "Test (0)"
+	assert captured["choices"][3].title == [("class:app-action", "[ + Create New List ]")]
 	assert captured["default"] == captured["choices"][1]
 	assert captured["instruction"] == "2 lists omitted per config.json"
+
+
+def test_select_delivery_target_can_create_new_list(monkeypatch) -> None:
+	options = [
+		DeliveryTargetOption(
+			identifier="list-1",
+			name="General",
+			source="iCloud",
+			item_count=1,
+			sample_items=[],
+		),
+	]
+	target = DeliveryTargetOption(
+		identifier="list-2",
+		name="Beach",
+		source="iCloud",
+		item_count=0,
+		sample_items=[],
+	)
+
+	def fake_select(*args, **kwargs):
+		return FakePrompt(kwargs["choices"][1].value)
+
+	class FakeAppleRemindersTarget:
+		def create_target(self, list_name):
+			assert list_name == "Beach"
+			return target
+
+	monkeypatch.setattr(shop_script.questionary, "select", fake_select)
+	monkeypatch.setattr(shop_script.questionary, "text", lambda *args, **kwargs: FakePrompt("Beach"))
+	monkeypatch.setattr(shop_script, "AppleRemindersTarget", FakeAppleRemindersTarget)
+
+	assert shop_script.select_delivery_target("General", options) == target
+
+
+def test_select_delivery_target_can_create_new_list_when_no_lists_exist(monkeypatch) -> None:
+	target = DeliveryTargetOption(
+		identifier="list-1",
+		name="Beach",
+		source="iCloud",
+		item_count=0,
+		sample_items=[],
+	)
+
+	def fake_select(*args, **kwargs):
+		return FakePrompt(kwargs["choices"][0].value)
+
+	class FakeAppleRemindersTarget:
+		def create_target(self, list_name):
+			assert list_name == "Beach"
+			return target
+
+	monkeypatch.setattr(shop_script.questionary, "select", fake_select)
+	monkeypatch.setattr(shop_script.questionary, "text", lambda *args, **kwargs: FakePrompt("Beach"))
+	monkeypatch.setattr(shop_script, "AppleRemindersTarget", FakeAppleRemindersTarget)
+
+	assert shop_script.select_delivery_target("General", []) == target
 
 
 def test_select_delivery_target_can_abort(monkeypatch) -> None:
