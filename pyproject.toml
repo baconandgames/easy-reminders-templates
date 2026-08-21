@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "recipe-shopper"
+version = "0.1.0"
+description = "Generate shopping lists from recipe templates."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+	"questionary==2.1.1",
+]
+
+[project.scripts]
+shop = "recipe_shopper.cli:main"
+
+[tool.setuptools]
+packages = ["recipe_shopper"]
+
+[tool.setuptools.package-data]
+recipe_shopper = [
+	"default_recipes.json",
+	"bin/reminders-helper.swift",
+]

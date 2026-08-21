@@ -5,11 +5,17 @@ JSON recipe files.
 
 ## Usage
 
-Create a virtual environment and install dependencies:
+Install with `pipx`:
+
+```sh
+pipx install git+https://github.com/yourname/recipe-shopper.git
+```
+
+For local development, install in editable mode:
 
 ```sh
 python3 -m venv .venv
-.venv/bin/python -m pip install -r requirements.txt
+.venv/bin/python -m pip install -e .
 ```
 
 Run with an optional recipe short name:
@@ -21,6 +27,14 @@ shop chili
 
 When no short name is provided, `shop` lists available recipes and prompts for
 a selection.
+
+When installed outside this repository, `shop` creates user files in:
+
+```text
+~/Library/Application Support/Recipe Shopper/
+```
+
+That folder contains `config.json` and `recipes.json`.
 
 The CLI then prompts for:
 

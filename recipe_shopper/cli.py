@@ -1,0 +1,897 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import argparse
+import os
+import shutil
+import sys
+from collections import Counter
+from dataclasses import replace
+from pathlib import Path
+from typing import Any
+
+try:
+	import questionary
+	from prompt_toolkit.keys import Keys
+except ModuleNotFoundError:
+	project_dir: Path = Path(__file__).resolve().parents[1]
+	project_venv: Path = project_dir / ".venv"
+	project_python: Path = project_venv / "bin" / "python"
+	if project_python.exists() and Path(sys.prefix).resolve() != project_venv.resolve():
+		os.execv(str(project_python), [str(project_python), *sys.argv])
+
+	raise SystemExit(
+		"Error: missing dependency questionary. Run: python3 -m venv .venv && .venv/bin/python -m pip install -r requirements.txt"
+	)
+
+from recipe_shopper.config import Config, ConfigLoadError, load_config, save_config
+from recipe_shopper.delivery import AppleRemindersTarget, DeliveryError, DeliveryResult, DeliveryTargetOption, get_delivery_target
+from recipe_shopper.formatter import (
+	ColorScheme,
+	ShoppingList,
+	ShoppingListItem,
+	build_shopping_list,
+	format_item,
+	format_item_prefix,
+	format_number,
+	render_shopping_list,
+)
+from recipe_shopper.recipes import RecipeLoadError, find_recipe_by_short_name, load_recipes
+
+
+ABORT_COMMANDS: set[str] = {"q", "quit", "cancel", "abort"}
+ABORT_CHOICE: str = "__abort__"
+ABORT_TITLE: str = "[!] ABORT"
+EXIT_CONFIG_CHOICE: str = "__exit_config__"
+EXIT_CONFIG_TITLE: str = "Exit Config Menu"
+BACK_CONFIG_CHOICE: str = "__back_config__"
+BACK_CONFIG_TITLE: str = "Back to Config Menu"
+START_INSTRUCTION: str = "[↑↓ + ENTER to select | Ctrl-C to abort]"
+SELECT_INSTRUCTION: str = " "
+INGREDIENT_INSTRUCTION: str = "\n[SPACE to include/exclude ingredients | ENTER to continue | Ctrl-C to abort]\n"
+CONFIG_LIST_INSTRUCTION: str = "\n[SPACE to show/hide lists | ENTER to save | Ctrl-C to abort]\n"
+COLOR_MENU_INSTRUCTION: str = "\n[ENTER to edit | ESC to return | Ctrl-C to quit]\n"
+COLOR_PICKER_CONTROLS: str = "[ENTER to save | ESC to return | Ctrl-C to quit]"
+OPTIONS_MENU_INSTRUCTION: str = "\n[ENTER to edit | ESC to return | Ctrl-C to quit]\n"
+TRUNCATED_SAMPLE_LENGTH: int = 11
+PROMPT_COLORS: dict[str, str] = {
+	"default": "",
+	"black": "ansiblack",
+	"red": "ansired",
+	"green": "ansigreen",
+	"yellow": "ansiyellow",
+	"blue": "ansiblue",
+	"magenta": "ansimagenta",
+	"cyan": "ansicyan",
+	"white": "ansiwhite",
+	"grey": "ansibrightblack",
+}
+CONFIG_COLOR_OPTIONS: tuple[str, ...] = (
+	"black",
+	"red",
+	"green",
+	"yellow",
+	"blue",
+	"magenta",
+	"cyan",
+	"white",
+	"grey",
+)
+CONFIG_COLOR_DEFAULTS: dict[str, str] = {
+	"standard_text_color": "white",
+	"quantity_color": "green",
+	"omitted_ingredient_color": "grey",
+}
+COLOR_SETTING_INSTRUCTIONS: dict[str, str] = {
+	"standard_text_color": "Used for regular terminal output text.",
+	"quantity_color": "Used for quantities and units in terminal ingredient lists.",
+	"omitted_ingredient_color": "Used for ingredients excluded from the final list.",
+}
+APP_NAME: str = "Recipe Shopper"
+
+
+class ShopAbort(Exception):
+	pass
+
+
+def configure_questionary_checkbox_rendering() -> None:
+	common = questionary.prompts.common
+	common.INDICATOR_SELECTED = "[x]"
+	common.INDICATOR_UNSELECTED = "[ ]"
+
+	def get_choice_tokens(self):
+		tokens = []
+
+		def append(index, choice):
+			selected = choice.value in self.selected_options
+			pointed_at = index == self.pointed_at
+
+			if pointed_at:
+				if self.pointer is not None:
+					tokens.append(("class:pointer", f" {self.pointer} "))
+				else:
+					tokens.append(("class:text", " " * 3))
+
+				tokens.append(("[SetCursorPosition]", ""))
+			else:
+				pointer_length = len(self.pointer) if self.pointer is not None else 1
+				tokens.append(("class:text", " " * (2 + pointer_length)))
+
+			if isinstance(choice, common.Separator):
+				tokens.append(("class:separator", f"{choice.title}"))
+			elif choice.disabled:
+				disabled_style = "class:highlighted" if pointed_at else "class:selected" if selected else "class:disabled"
+				if isinstance(choice.title, list):
+					tokens.append((disabled_style, "- "))
+					tokens.extend(choice.title)
+				else:
+					tokens.append((disabled_style, f"- {choice.title}"))
+
+				disabled_text = "" if isinstance(choice.disabled, bool) else f" ({choice.disabled})"
+				tokens.append((disabled_style, disabled_text))
+			else:
+				shortcut = choice.get_shortcut_title() if self.use_shortcuts else ""
+
+				if selected:
+					indicator = f"{common.INDICATOR_SELECTED} " if self.use_indicator else ""
+					indicator_style = "class:highlighted" if pointed_at else "class:selected"
+				else:
+					indicator = f"{common.INDICATOR_UNSELECTED} " if self.use_indicator else ""
+					indicator_style = "class:highlighted" if pointed_at else "class:text"
+
+				tokens.append((indicator_style, indicator))
+
+				if isinstance(choice.title, list):
+					tokens.extend(choice.title)
+				elif pointed_at:
+					tokens.append(("class:highlighted", f"{shortcut}{choice.title}"))
+				elif selected:
+					tokens.append(("class:selected", f"{shortcut}{choice.title}"))
+				else:
+					tokens.append(("class:text", f"{shortcut}{choice.title}"))
+
+			tokens.append(("", "\n"))
+
+		for index, choice in enumerate(self.filtered_choices):
+			append(index, choice)
+
+		current = self.get_pointed_at()
+
+		if self.show_selected:
+			answer = current.get_shortcut_title() if self.use_shortcuts else ""
+			answer += current.title if isinstance(current.title, str) else current.title[0][1]
+			tokens.append(("class:text", f"  Answer: {answer}"))
+
+		show_description = self.show_description and current.description is not None
+		if show_description:
+			tokens.append(("class:text", f"  Description: {current.description}"))
+
+		if not (self.show_selected or show_description):
+			tokens.pop()
+
+		return tokens
+
+	common.InquirerControl._get_choice_tokens = get_choice_tokens
+
+
+configure_questionary_checkbox_rendering()
+
+
+def main() -> int:
+	parser: argparse.ArgumentParser = argparse.ArgumentParser(
+		prog="shop",
+		description="Generate a shopping list from a recipe.",
+	)
+	parser.add_argument("short_name", nargs="?", help="recipe short name")
+	args: argparse.Namespace = parser.parse_args()
+
+	project_dir: Path = get_project_root()
+	config_path: Path = resolve_config_path(project_dir)
+	recipes_path: Path = resolve_recipes_path(project_dir)
+
+	try:
+		config: Config = load_config(config_path)
+	except ConfigLoadError as error:
+		print(f"Error: {error}", file=sys.stderr)
+		return 1
+
+	if args.short_name == "config":
+		try:
+			return run_config_editor(config_path, config, prompt_style=build_prompt_style(config.quantity_color))
+		except ShopAbort:
+			print("Aborted.")
+			return 130
+		except DeliveryError as error:
+			print(f"Error: {error}", file=sys.stderr)
+			return 1
+
+	try:
+		recipes: dict[str, dict[str, Any]] = load_recipes(recipes_path)
+	except RecipeLoadError as error:
+		print(f"Error: {error}", file=sys.stderr)
+		return 1
+
+	try:
+		prompt_style = build_prompt_style(config.quantity_color)
+		print()
+		print(style_instruction(START_INSTRUCTION))
+		print()
+		if args.short_name is None:
+			recipe = select_recipe(recipes, prompt_style=prompt_style)
+		else:
+			try:
+				match: tuple[str, dict[str, Any]] | None = find_recipe_by_short_name(recipes, args.short_name)
+			except RecipeLoadError as error:
+				print(f"Error: {error}", file=sys.stderr)
+				return 1
+
+			if match is None:
+				print(f'Error: no recipe found with short name "{args.short_name}".', file=sys.stderr)
+				return 1
+
+			_recipe_id, recipe = match
+
+		batch_size: float = prompt_for_batch_size(recipe, prompt_style=prompt_style)
+		include_on_hand: bool = prompt_for_include_on_hand(
+			config.include_on_hand_default,
+			prompt_style=prompt_style,
+		)
+		print()
+	except ShopAbort:
+		print("Aborted.")
+		return 130
+
+	shopping_list = build_shopping_list(
+		recipe,
+		batch_size,
+		include_on_hand,
+		append_short_name=config.append_short_name,
+	)
+
+	color_scheme: ColorScheme = ColorScheme(
+		standard_text_color=config.standard_text_color,
+		quantity_color=config.quantity_color,
+		omitted_ingredient_color=config.omitted_ingredient_color,
+	)
+	try:
+		selected_ingredient_indexes: list[int] = prompt_for_ingredient_items(
+			shopping_list,
+			prompt_style=prompt_style,
+		)
+		shopping_list = apply_selected_ingredients(shopping_list, selected_ingredient_indexes)
+	except ShopAbort:
+		print("Aborted.")
+		return 130
+
+	print()
+	print(render_final_ingredient_list(without_item_tags(shopping_list), color_scheme=color_scheme))
+
+	try:
+		delivery_result: DeliveryResult = get_delivery_target(
+			config.target_app,
+			target_selector=lambda target_name, options, omitted_count: select_delivery_target(
+				target_name,
+				options,
+				omitted_count,
+				prompt_style=build_prompt_style(config.quantity_color),
+			),
+		).create_list(shopping_list, config)
+	except ShopAbort:
+		print("Aborted.")
+		return 130
+	except DeliveryError as error:
+		print(f"Error: {error}", file=sys.stderr)
+		return 1
+	print()
+	print(render_delivery_result(delivery_result))
+
+	return 0
+
+
+def get_project_root() -> Path:
+	return Path(__file__).resolve().parents[1]
+
+
+def get_user_data_dir() -> Path:
+	if sys.platform == "darwin":
+		return Path.home() / "Library" / "Application Support" / APP_NAME
+
+	return Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "recipe-shopper"
+
+
+def resolve_config_path(project_dir: Path) -> Path:
+	project_config_path: Path = project_dir / "config.json"
+	if project_config_path.exists():
+		return project_config_path
+
+	config_path: Path = get_user_data_dir() / "config.json"
+	if not config_path.exists():
+		config_path.parent.mkdir(parents=True, exist_ok=True)
+		save_config(config_path, Config())
+
+	return config_path
+
+
+def resolve_recipes_path(project_dir: Path) -> Path:
+	project_recipes_path: Path = project_dir / "recipes.json"
+	if project_recipes_path.exists():
+		return project_recipes_path
+
+	recipes_path: Path = get_user_data_dir() / "recipes.json"
+	if not recipes_path.exists():
+		recipes_path.parent.mkdir(parents=True, exist_ok=True)
+		shutil.copyfile(Path(__file__).resolve().parent / "default_recipes.json", recipes_path)
+
+	return recipes_path
+
+
+def render_delivery_result(result: DeliveryResult) -> str:
+	status: str = "Dry run" if result.dry_run else "Created"
+	item_label: str = "item" if len(result.created_items) == 1 else "items"
+	omitted_label: str = "item" if len(result.omitted_items) == 1 else "items"
+
+	return "\n".join(
+		[
+			f"{status}: {result.target_name}",
+			f"Included: {len(result.created_items)} {item_label}",
+			f"Omitted: {len(result.omitted_items)} {omitted_label}",
+		]
+	)
+
+
+def select_recipe(recipes: dict[str, dict[str, Any]], prompt_style=None) -> dict[str, Any]:
+	recipe_options: list[dict[str, Any]] = list(recipes.values())
+	choices: list[questionary.Choice] = [
+		questionary.Choice(
+			title=recipe["name"],
+			value=recipe,
+		)
+		for recipe in recipe_options
+	]
+	choices.append(abort_choice())
+
+	selection = questionary.select(
+		"",
+		choices=choices,
+		instruction=SELECT_INSTRUCTION,
+		pointer=">",
+		qmark="Select a Recipe",
+		style=prompt_style,
+	)
+	return require_selection(ask_or_abort(selection))
+
+
+def run_config_editor(config_path: Path, config: Config, prompt_style=None) -> int:
+	while True:
+		print()
+		selection = questionary.select(
+			"",
+			choices=[
+				questionary.Choice(title="Reminders Lists", value="reminders_lists"),
+				questionary.Choice(title="Colors", value="colors"),
+				questionary.Choice(title="Options", value="options"),
+				exit_config_choice(),
+			],
+			instruction=SELECT_INSTRUCTION,
+			pointer=">",
+			qmark="Config",
+			style=prompt_style,
+		)
+		action = require_config_selection(ask_or_abort(selection))
+		if action == EXIT_CONFIG_CHOICE:
+			return 0
+
+		if action == "reminders_lists":
+			config = edit_reminders_list_visibility(config, prompt_style=prompt_style)
+			save_config(config_path, config)
+			print()
+			print("Saved config.json")
+			continue
+
+		if action == "colors":
+			config = edit_color_settings(config_path, config, prompt_style=prompt_style)
+			continue
+
+		if action == "options":
+			config = edit_options(config_path, config, prompt_style=prompt_style)
+			continue
+
+		print()
+		print("Not implemented yet.")
+
+
+def edit_reminders_list_visibility(config: Config, prompt_style=None) -> Config:
+	targets: list[DeliveryTargetOption] = AppleRemindersTarget().list_targets()
+	hidden_ids: set[str] = set(config.hidden_apple_reminders_list_ids)
+	name_counts: Counter[str] = Counter(target.name for target in targets)
+	choices: list[questionary.Choice] = [
+		questionary.Choice(
+			title=format_delivery_target_option(target, show_detail=name_counts[target.name] > 1),
+			value=target.identifier,
+			checked=target.identifier not in hidden_ids,
+		)
+		for target in targets
+	]
+	if len(choices) == 0:
+		raise DeliveryError("No Apple Reminders lists were found.")
+
+	selection = questionary.checkbox(
+		"",
+		choices=choices,
+		instruction=CONFIG_LIST_INSTRUCTION,
+		pointer=">",
+		qmark="Visible Reminder Lists",
+		style=prompt_style,
+	)
+	visible_ids: set[str] = set(require_selection(ask_or_abort(selection)))
+	return replace(
+		config,
+		hidden_apple_reminders_list_ids=[
+			target.identifier
+			for target in targets
+			if target.identifier not in visible_ids
+		],
+	)
+
+
+def edit_color_settings(config_path: Path, config: Config, prompt_style=None) -> Config:
+	while True:
+		setting = questionary.select(
+			"",
+			choices=[
+				questionary.Choice(
+					title=f"Standard Text Color: {format_config_color_value(config, 'standard_text_color')}",
+					value="standard_text_color",
+				),
+				questionary.Choice(
+					title=f"Quantity Color: {format_config_color_value(config, 'quantity_color')}",
+					value="quantity_color",
+				),
+				questionary.Choice(
+					title=f"Omitted Ingredient Color: {format_config_color_value(config, 'omitted_ingredient_color')}",
+					value="omitted_ingredient_color",
+				),
+				back_config_choice(),
+			],
+			instruction=COLOR_MENU_INSTRUCTION,
+			pointer=">",
+			qmark="Colors",
+			style=prompt_style,
+		)
+		bind_escape_value(setting, BACK_CONFIG_CHOICE)
+		setting_name = require_config_selection(ask_or_abort(setting))
+		if setting_name == BACK_CONFIG_CHOICE:
+			return config
+
+		current_color: str = normalize_config_color(setting_name, getattr(config, setting_name))
+		choices: list[questionary.Choice] = [
+			color_choice(color, is_default=color == CONFIG_COLOR_DEFAULTS[setting_name])
+			for color in CONFIG_COLOR_OPTIONS
+		]
+		default_choice: questionary.Choice | None = next(
+			(choice for choice in choices if choice.value == current_color),
+			None,
+		)
+		color_selection = questionary.select(
+			"",
+			choices=choices,
+			default=default_choice,
+			instruction=format_color_setting_instruction(setting_name),
+			pointer=">",
+			qmark=format_config_setting_name(setting_name),
+			style=prompt_style,
+		)
+		bind_escape_value(color_selection, BACK_CONFIG_CHOICE)
+		selected_color = require_config_selection(ask_or_abort(color_selection))
+		if selected_color == BACK_CONFIG_CHOICE:
+			continue
+
+		config = replace(config, **{setting_name: selected_color})
+		save_config(config_path, config)
+		print()
+		print("Saved config.json")
+
+
+def edit_options(config_path: Path, config: Config, prompt_style=None) -> Config:
+	while True:
+		selection = questionary.select(
+			"",
+			choices=[
+				questionary.Choice(
+					title=f"Default Reminder List: {config.apple_reminders_list_name}",
+					value="apple_reminders_list",
+				),
+				questionary.Choice(
+					title=f"Include All On-Hand Items: {format_bool_option(config.include_on_hand_default)}",
+					value="include_on_hand_default",
+				),
+				questionary.Choice(
+					title=f"Append Recipe Short Name: {format_bool_option(config.append_short_name)}",
+					value="append_short_name",
+				),
+				questionary.Choice(
+					title=f"Delivery Mode: {format_delivery_mode(config.delivery_mode)}",
+					value="delivery_mode",
+				),
+				back_config_choice(),
+			],
+			instruction=OPTIONS_MENU_INSTRUCTION,
+			pointer=">",
+			qmark="Options",
+			style=prompt_style,
+		)
+		bind_escape_value(selection, BACK_CONFIG_CHOICE)
+		setting_name = require_config_selection(ask_or_abort(selection))
+		if setting_name == BACK_CONFIG_CHOICE:
+			return config
+
+		if setting_name == "apple_reminders_list":
+			config = edit_default_reminders_list(config, prompt_style=prompt_style)
+		elif setting_name in {"include_on_hand_default", "append_short_name"}:
+			config = edit_bool_option(config, setting_name, prompt_style=prompt_style)
+		elif setting_name == "delivery_mode":
+			config = edit_delivery_mode(config, prompt_style=prompt_style)
+
+		save_config(config_path, config)
+		print()
+		print("Saved config.json")
+
+
+def edit_default_reminders_list(config: Config, prompt_style=None) -> Config:
+	targets: list[DeliveryTargetOption] = AppleRemindersTarget().list_targets()
+	visible_targets: list[DeliveryTargetOption] = [
+		target for target in targets if target.identifier not in config.hidden_apple_reminders_list_ids
+	]
+	if len(visible_targets) == 0:
+		raise DeliveryError("No visible Apple Reminders lists were found.")
+
+	target = select_delivery_target(
+		config.apple_reminders_list_name,
+		visible_targets,
+		omitted_count=len(targets) - len(visible_targets),
+		prompt_style=prompt_style,
+	)
+	return replace(
+		config,
+		apple_reminders_list_id=target.identifier,
+		apple_reminders_list_name=target.name,
+	)
+
+
+def edit_bool_option(config: Config, setting_name: str, prompt_style=None) -> Config:
+	current_value: bool = getattr(config, setting_name)
+	choices: list[questionary.Choice] = [
+		questionary.Choice(title="Yes", value=True),
+		questionary.Choice(title="No", value=False),
+	]
+	default_choice: questionary.Choice = choices[0] if current_value else choices[1]
+	selection = questionary.select(
+		"",
+		choices=choices,
+		default=default_choice,
+		instruction=SELECT_INSTRUCTION,
+		pointer=">",
+		qmark=format_config_setting_name(setting_name),
+		style=prompt_style,
+	)
+	bind_escape_value(selection, BACK_CONFIG_CHOICE)
+	value = require_config_selection(ask_or_abort(selection))
+	if value == BACK_CONFIG_CHOICE:
+		return config
+
+	return replace(config, **{setting_name: value})
+
+
+def edit_delivery_mode(config: Config, prompt_style=None) -> Config:
+	choices: list[questionary.Choice] = [
+		questionary.Choice(title="Dry Run", value="dry_run"),
+		questionary.Choice(title="Create", value="create"),
+	]
+	default_choice: questionary.Choice = next(choice for choice in choices if choice.value == config.delivery_mode)
+	selection = questionary.select(
+		"",
+		choices=choices,
+		default=default_choice,
+		instruction=SELECT_INSTRUCTION,
+		pointer=">",
+		qmark="Delivery Mode",
+		style=prompt_style,
+	)
+	bind_escape_value(selection, BACK_CONFIG_CHOICE)
+	mode = require_config_selection(ask_or_abort(selection))
+	if mode == BACK_CONFIG_CHOICE:
+		return config
+
+	return replace(config, delivery_mode=mode)
+
+
+def prompt_for_batch_size(recipe: dict[str, Any], prompt_style=None) -> float:
+	default_batch: float = float(recipe["default_batch"])
+	default_display: str = format_number(default_batch)
+	prompt = questionary.text(
+		"",
+		default=default_display,
+		validate=validate_batch_size,
+		qmark="Batch Size",
+		style=prompt_style,
+	)
+
+	selection = require_selection(ask_or_abort(prompt)).strip()
+	if selection == "":
+		return default_batch
+	if selection.casefold() in ABORT_COMMANDS:
+		raise ShopAbort()
+	return float(selection)
+
+
+def prompt_for_include_on_hand(default: bool, prompt_style=None) -> bool:
+	default_choice = questionary.Choice(title="Yes", value=True) if default else questionary.Choice(title="No", value=False)
+	other_choice = questionary.Choice(title="No", value=False) if default else questionary.Choice(title="Yes", value=True)
+	choices: list[questionary.Choice] = [default_choice, other_choice, abort_choice()]
+	selection = questionary.select(
+		"",
+		choices=choices,
+		instruction=SELECT_INSTRUCTION,
+		pointer=">",
+		qmark="Include All On-Hand Items",
+		style=prompt_style,
+	)
+	return require_selection(ask_or_abort(selection))
+
+
+def select_delivery_target(
+	target_name: str,
+	options: list[DeliveryTargetOption],
+	omitted_count: int = 0,
+	prompt_style=None,
+) -> DeliveryTargetOption:
+	print()
+	name_counts: Counter[str] = Counter(option.name for option in options)
+	choices: list[questionary.Choice] = []
+	default_choice: questionary.Choice | None = None
+	for option in options:
+		choice = questionary.Choice(
+			title=format_delivery_target_option(option, show_detail=name_counts[option.name] > 1),
+			value=option,
+		)
+		choices.append(choice)
+		if default_choice is None and option.name == target_name:
+			default_choice = choice
+
+	choices.append(abort_choice())
+	selection = questionary.select(
+		"",
+		choices=choices,
+		default=default_choice,
+		instruction=format_omitted_list_instruction(omitted_count),
+		pointer=">",
+		qmark="Choose Reminder List",
+		style=prompt_style,
+	)
+	return require_selection(ask_or_abort(selection))
+
+
+def prompt_for_ingredient_items(shopping_list: ShoppingList, prompt_style=None) -> list[int]:
+	ordered_items: list[tuple[int, ShoppingListItem]] = order_items_with_on_hand_last(shopping_list.items)
+	prefix_width: int = max((len(format_item_prefix(item)) for _index, item in ordered_items), default=0)
+	choices: list[questionary.Choice] = [
+		questionary.Choice(
+			title=format_item(replace(item, tag=None), prefix_width),
+			value=index,
+			checked=not item.omitted,
+		)
+		for index, item in ordered_items
+	]
+	initial_choice: questionary.Choice | None = choices[0] if len(choices) > 0 else None
+	if any(item.omitted for _index, item in ordered_items):
+		initial_choice = next(
+			choice
+			for choice, (_index, item) in zip(choices, ordered_items)
+			if item.omitted
+		)
+	selection = questionary.checkbox(
+		"",
+		choices=choices,
+		instruction=INGREDIENT_INSTRUCTION,
+		initial_choice=initial_choice,
+		pointer=">",
+		qmark="Choose Ingredients",
+		style=prompt_style,
+	)
+	selection = ask_or_abort(selection)
+	return require_selection(selection)
+
+
+def render_final_ingredient_list(shopping_list: ShoppingList, color_scheme: ColorScheme) -> str:
+	full_render: str = render_shopping_list(shopping_list, color_scheme=color_scheme)
+	_lines_before_included, separator, included_section = full_render.partition("\n\nIncluded\n")
+	if separator == "":
+		return full_render
+
+	return f"Final Ingredient List\n{included_section}"
+
+
+def without_item_tags(shopping_list: ShoppingList) -> ShoppingList:
+	return ShoppingList(
+		recipe_name=shopping_list.recipe_name,
+		batch_size=shopping_list.batch_size,
+		items=[replace(item, tag=None) for item in shopping_list.items],
+		included_items=[replace(item, tag=None) for item in shopping_list.included_items],
+		omitted_items=[replace(item, tag=None) for item in shopping_list.omitted_items],
+	)
+
+
+def apply_selected_ingredients(
+	shopping_list: ShoppingList,
+	selected_ingredient_indexes: list[int],
+) -> ShoppingList:
+	selected_indexes: set[int] = set(selected_ingredient_indexes)
+	items: list[ShoppingListItem] = [
+		replace(item, omitted=index not in selected_indexes)
+		for index, item in order_items_with_on_hand_last(shopping_list.items)
+	]
+
+	return ShoppingList(
+		recipe_name=shopping_list.recipe_name,
+		batch_size=shopping_list.batch_size,
+		items=items,
+		included_items=[item for item in items if not item.omitted],
+		omitted_items=[item for item in items if item.omitted],
+	)
+
+
+def order_items_with_on_hand_last(items: list[ShoppingListItem]) -> list[tuple[int, ShoppingListItem]]:
+	return sorted(enumerate(items), key=lambda indexed_item: indexed_item[1].always_on_hand)
+
+
+def format_delivery_target_option(option: DeliveryTargetOption, show_detail: bool = True) -> str:
+	base_label: str = f"{option.name} ({option.item_count})"
+	if not show_detail:
+		return base_label
+
+	if len(option.sample_items) == 0:
+		return base_label
+
+	samples: str = ", ".join(truncate_sample_item(item) for item in option.sample_items[:3])
+	return f"{base_label} - {samples}"
+
+
+def truncate_sample_item(item: str) -> str:
+	if len(item) <= TRUNCATED_SAMPLE_LENGTH:
+		return item
+
+	return f"{item[:TRUNCATED_SAMPLE_LENGTH]}..."
+
+
+def format_omitted_list_instruction(omitted_count: int) -> str:
+	if omitted_count == 0:
+		return SELECT_INSTRUCTION
+
+	list_label: str = "list" if omitted_count == 1 else "lists"
+	return f"{omitted_count} {list_label} omitted per config.json"
+
+
+def abort_choice():
+	return questionary.Choice(title=[("class:abort", ABORT_TITLE)], value=ABORT_CHOICE)
+
+
+def exit_config_choice():
+	return questionary.Choice(title=EXIT_CONFIG_TITLE, value=EXIT_CONFIG_CHOICE)
+
+
+def back_config_choice():
+	return questionary.Choice(title=BACK_CONFIG_TITLE, value=BACK_CONFIG_CHOICE)
+
+
+def color_choice(color_name: str, is_default: bool = False):
+	label: str = f"{color_name} (default)" if is_default else color_name
+	return questionary.Choice(title=[(f"class:color-{color_name}", label)], value=color_name)
+
+
+def normalize_config_color(setting_name: str, color_name: str) -> str:
+	if color_name == "default":
+		return CONFIG_COLOR_DEFAULTS[setting_name]
+
+	return color_name
+
+
+def format_config_color_value(config: Config, setting_name: str) -> str:
+	color_name: str = normalize_config_color(setting_name, getattr(config, setting_name))
+	default_color: str = CONFIG_COLOR_DEFAULTS[setting_name]
+	if color_name == default_color:
+		return f"{color_name} (default)"
+
+	return color_name
+
+
+def bind_escape_value(prompt, value) -> None:
+	if not hasattr(prompt, "application"):
+		return
+
+	@prompt.application.key_bindings.add(Keys.Escape, eager=True)
+	def _(event):
+		event.app.exit(result=value)
+
+
+def format_config_setting_name(setting_name: str) -> str:
+	return setting_name.replace("_", " ").title()
+
+
+def format_bool_option(value: bool) -> str:
+	return "Yes" if value else "No"
+
+
+def format_delivery_mode(value: str) -> str:
+	return "Dry Run" if value == "dry_run" else "Create"
+
+
+def format_color_setting_instruction(setting_name: str) -> str:
+	return f"\n{COLOR_SETTING_INSTRUCTIONS[setting_name]}\n{COLOR_PICKER_CONTROLS}\n"
+
+
+def style_instruction(value: str) -> str:
+	return f"\033[90m{value}\033[0m"
+
+
+def validate_batch_size(selection: str) -> bool | str:
+	selection = selection.strip()
+	if selection == "":
+		return True
+
+	if selection.casefold() in ABORT_COMMANDS:
+		return True
+
+	try:
+		batch_size: float = float(selection)
+	except ValueError:
+		return "Enter a positive number."
+
+	if batch_size <= 0:
+		return "Enter a positive number."
+
+	return True
+
+
+def build_prompt_style(color_name: str):
+	color: str = PROMPT_COLORS[color_name]
+	styles: dict[str, str] = {
+		"abort": "ansired noreverse noinherit",
+		"selected": "ansiyellow noreverse noinherit",
+		"answer": "ansiyellow noinherit",
+		"instruction": "ansibrightblack",
+		"qmark": "bold",
+		"question": "bold",
+	}
+	for color_option, ansi_color in PROMPT_COLORS.items():
+		if ansi_color != "":
+			styles[f"color-{color_option}"] = f"{ansi_color} noinherit"
+	if color != "":
+		styles["pointer"] = f"{color} noinherit"
+		styles["highlighted"] = f"{color} noreverse noinherit"
+
+	return questionary.Style.from_dict(styles)
+
+
+def require_selection(selection):
+	if selection is None or selection == ABORT_CHOICE:
+		raise ShopAbort()
+
+	return selection
+
+
+def require_config_selection(selection):
+	if selection is None:
+		raise ShopAbort()
+
+	return selection
+
+
+def ask_or_abort(prompt):
+	try:
+		return prompt.ask()
+	except (KeyboardInterrupt, EOFError) as error:
+		raise ShopAbort() from error
+
+
+if __name__ == "__main__":
+	raise SystemExit(main())

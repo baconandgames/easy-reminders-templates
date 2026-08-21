@@ -26,7 +26,7 @@ Whenever possible, implement one small feature at a time.
 ## Current Technology
 
 - Python 3
-- Standard `venv`
+- Installable Python package
 - questionary for terminal prompts
 - Git
 - Apple Reminders via EventKit
@@ -43,15 +43,25 @@ recipe-shopper/
 ├── .gitignore
 ├── README.md
 ├── DEVELOPMENT.md
+├── pyproject.toml
 ├── config.json
 ├── recipes.json
 ├── shop
-├── src/
+├── bin/
+│   └── reminders-helper.swift
+├── recipe_shopper/
 │   ├── __init__.py
+│   ├── cli.py
 │   ├── config.py
+│   ├── delivery.py
 │   ├── formatter.py
-│   └── recipes.py
+│   ├── recipes.py
+│   ├── default_recipes.json
+│   └── bin/
+│       └── reminders-helper.swift
 └── tests/
+    ├── test_delivery.py
+    ├── test_shop.py
     ├── test_config.py
     └── test_formatter.py
 ```

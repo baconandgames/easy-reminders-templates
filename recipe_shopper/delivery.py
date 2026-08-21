@@ -6,8 +6,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Protocol
 
-from src.config import Config
-from src.formatter import ShoppingList, format_delivery_item
+from recipe_shopper.config import Config
+from recipe_shopper.formatter import ShoppingList, format_delivery_item
 
 TargetSelector = Callable[[str, list["DeliveryTargetOption"], int], "DeliveryTargetOption"]
 
@@ -69,7 +69,7 @@ class AppleRemindersTarget:
 		)
 
 	def list_targets(self) -> list[DeliveryTargetOption]:
-		helper_path: Path = Path(__file__).resolve().parents[1] / "bin" / "reminders-helper.swift"
+		helper_path: Path = get_reminders_helper_path()
 		try:
 			result = self._runner(
 				["swift", str(helper_path), "list-targets"],
@@ -131,7 +131,7 @@ class AppleRemindersTarget:
 		raise DeliveryError(f'Multiple reminder lists named "{config.apple_reminders_list_name}" were found.')
 
 	def _run_helper(self, config: Config, created_items: list[str], list_identifier: str | None) -> None:
-		helper_path: Path = Path(__file__).resolve().parents[1] / "bin" / "reminders-helper.swift"
+		helper_path: Path = get_reminders_helper_path()
 		payload: str = json.dumps(
 			{
 				"listIdentifier": list_identifier,
@@ -160,3 +160,11 @@ def get_delivery_target(
 		return AppleRemindersTarget(target_selector=target_selector)
 
 	raise ValueError(f'Unsupported delivery target "{target_app}".')
+
+
+def get_reminders_helper_path() -> Path:
+	packaged_path: Path = Path(__file__).resolve().parent / "bin" / "reminders-helper.swift"
+	if packaged_path.exists():
+		return packaged_path
+
+	return Path(__file__).resolve().parents[1] / "bin" / "reminders-helper.swift"

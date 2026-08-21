@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from src.formatter import ColorScheme, build_shopping_list, render_shopping_list
+from recipe_shopper.formatter import ColorScheme, build_shopping_list, render_shopping_list
 
 
 PLAIN_COLORS = ColorScheme(

@@ -1,21 +1,9 @@
 from __future__ import annotations
 
-import importlib.util
-from importlib.machinery import SourceFileLoader
-from pathlib import Path
-
-from src.config import Config, load_config
-from src.delivery import DeliveryResult, DeliveryTargetOption
-from src.formatter import build_shopping_list
-
-
-SHOP_PATH: Path = Path(__file__).resolve().parents[1] / "shop"
-SHOP_LOADER = SourceFileLoader("shop_script", str(SHOP_PATH))
-SHOP_SPEC = importlib.util.spec_from_loader("shop_script", SHOP_LOADER)
-assert SHOP_SPEC is not None
-assert SHOP_SPEC.loader is not None
-shop_script = importlib.util.module_from_spec(SHOP_SPEC)
-SHOP_SPEC.loader.exec_module(shop_script)
+import recipe_shopper.cli as shop_script
+from recipe_shopper.config import Config, load_config
+from recipe_shopper.delivery import DeliveryResult, DeliveryTargetOption
+from recipe_shopper.formatter import build_shopping_list
 
 
 class FakePrompt:
@@ -24,6 +12,48 @@ class FakePrompt:
 
 	def ask(self):
 		return self.result
+
+
+def test_resolve_config_path_prefers_project_config(tmp_path) -> None:
+	project_dir = tmp_path / "project"
+	project_dir.mkdir()
+	project_config = project_dir / "config.json"
+	project_config.write_text("{}", encoding="utf-8")
+
+	assert shop_script.resolve_config_path(project_dir) == project_config
+
+
+def test_resolve_config_path_creates_user_config(monkeypatch, tmp_path) -> None:
+	project_dir = tmp_path / "project"
+	project_dir.mkdir()
+	user_data_dir = tmp_path / "user-data"
+	monkeypatch.setattr(shop_script, "get_user_data_dir", lambda: user_data_dir)
+
+	config_path = shop_script.resolve_config_path(project_dir)
+
+	assert config_path == user_data_dir / "config.json"
+	assert load_config(config_path).standard_text_color == "white"
+
+
+def test_resolve_recipes_path_prefers_project_recipes(tmp_path) -> None:
+	project_dir = tmp_path / "project"
+	project_dir.mkdir()
+	project_recipes = project_dir / "recipes.json"
+	project_recipes.write_text('{"recipes": {}}', encoding="utf-8")
+
+	assert shop_script.resolve_recipes_path(project_dir) == project_recipes
+
+
+def test_resolve_recipes_path_creates_user_recipes(monkeypatch, tmp_path) -> None:
+	project_dir = tmp_path / "project"
+	project_dir.mkdir()
+	user_data_dir = tmp_path / "user-data"
+	monkeypatch.setattr(shop_script, "get_user_data_dir", lambda: user_data_dir)
+
+	recipes_path = shop_script.resolve_recipes_path(project_dir)
+
+	assert recipes_path == user_data_dir / "recipes.json"
+	assert '"Classic Chili"' in recipes_path.read_text(encoding="utf-8")
 
 
 def test_select_recipe_displays_recipe_names_without_short_names(monkeypatch) -> None:
