@@ -120,8 +120,6 @@ Templates currently live in `recipes.json`.
     "<recipe-id>": {
       "name": "Recipe Name",
       "short_name": "Optional tag",
-      "url": "Optional URL",
-      "notes": "Optional notes",
       "default_batch": 1,
       "ingredients": [
         {

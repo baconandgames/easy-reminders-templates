@@ -686,7 +686,6 @@ def without_item_tags(shopping_list: ShoppingList) -> ShoppingList:
 	return ShoppingList(
 		recipe_name=shopping_list.recipe_name,
 		batch_size=shopping_list.batch_size,
-		recipe_url=shopping_list.recipe_url,
 		items=[replace(item, tag=None) for item in shopping_list.items],
 		included_items=[replace(item, tag=None) for item in shopping_list.included_items],
 		omitted_items=[replace(item, tag=None) for item in shopping_list.omitted_items],
@@ -706,7 +705,6 @@ def apply_selected_ingredients(
 	return ShoppingList(
 		recipe_name=shopping_list.recipe_name,
 		batch_size=shopping_list.batch_size,
-		recipe_url=shopping_list.recipe_url,
 		items=items,
 		included_items=[item for item in items if not item.omitted],
 		omitted_items=[item for item in items if item.omitted],

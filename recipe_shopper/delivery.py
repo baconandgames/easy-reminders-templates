@@ -58,7 +58,6 @@ class AppleRemindersTarget:
 			created_items,
 			selected_target.identifier,
 			selected_target.name,
-			shopping_list.recipe_url,
 		)
 
 		return DeliveryResult(
@@ -135,7 +134,6 @@ class AppleRemindersTarget:
 		created_items: list[str],
 		list_identifier: str | None,
 		list_name: str,
-		item_url: str | None,
 	) -> None:
 		helper_path: Path = get_reminders_helper_path()
 		payload: str = json.dumps(
@@ -143,7 +141,6 @@ class AppleRemindersTarget:
 				"listIdentifier": list_identifier,
 				"listName": list_name,
 				"items": created_items,
-				"url": item_url,
 			}
 		)
 		try:

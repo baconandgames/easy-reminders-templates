@@ -41,7 +41,6 @@ class ShoppingListItem:
 class ShoppingList:
 	recipe_name: str
 	batch_size: float
-	recipe_url: str | None
 	items: list[ShoppingListItem]
 	included_items: list[ShoppingListItem]
 	omitted_items: list[ShoppingListItem]
@@ -77,7 +76,6 @@ def build_shopping_list(
 	return ShoppingList(
 		recipe_name=recipe["name"],
 		batch_size=batch_size,
-		recipe_url=recipe.get("url") if isinstance(recipe.get("url"), str) and recipe.get("url") else None,
 		items=items,
 		included_items=included_items,
 		omitted_items=omitted_items,

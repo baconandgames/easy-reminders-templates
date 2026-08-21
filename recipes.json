@@ -3,8 +3,6 @@
     "classic-chili": {
       "name": "Classic Chili",
       "short_name": "Chili",
-      "url": "https://docs.google.com/document/d/1hSBEgbgNMPcNBlHLFNuicmQrEsF_YTNN2PIRx8y4uBQ/edit?tab=t.0",
-      "notes": "I usually make a triple batch, which means 10+ cans of beans and a 100+ oz can of whole tomatoes (partially blended, partially sliced).",
       "default_batch": 3,
       "ingredients": [
         {

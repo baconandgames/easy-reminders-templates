@@ -74,56 +74,10 @@ def test_apple_reminders_target_runs_script() -> None:
 		"listIdentifier": "list-1",
 		"listName": "Shared Grocery",
 		"items": ["1 Apple"],
-		"url": None,
 	}
 	assert calls[1]["check"] is True
 	assert calls[1]["capture_output"] is True
 	assert calls[1]["text"] is True
-
-
-def test_apple_reminders_target_passes_recipe_url_to_helper() -> None:
-	calls = []
-
-	def fake_runner(args, input, check, capture_output, text):
-		calls.append({"args": args, "input": input})
-		if args[2] == "list-targets":
-			return subprocess.CompletedProcess(
-				args,
-				0,
-				stdout=json.dumps(
-					[
-						{
-							"id": "list-1",
-							"name": "Shared Grocery",
-							"source": "iCloud",
-							"item_count": 1,
-							"sample_items": ["Milk"],
-						}
-					]
-				),
-				stderr="",
-			)
-		return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
-
-	recipe = {
-		"name": "Test Recipe",
-		"url": "https://example.com/recipe",
-		"ingredients": [
-			{
-				"name": "Apple",
-				"quantity": 1,
-				"always_on_hand": False,
-			},
-		],
-	}
-	shopping_list = build_shopping_list(recipe, 1, include_on_hand=False)
-
-	AppleRemindersTarget(runner=fake_runner).create_list(
-		shopping_list,
-		Config(apple_reminders_list_name="Shared Grocery"),
-	)
-
-	assert json.loads(calls[1]["input"])["url"] == "https://example.com/recipe"
 
 
 def test_apple_reminders_target_uses_configured_list_id_after_listing_targets() -> None:
