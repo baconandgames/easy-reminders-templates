@@ -28,7 +28,20 @@ from src.recipes import RecipeLoadError, find_recipe_by_short_name, load_recipes
 
 ABORT_COMMANDS: set[str] = {"q", "quit", "cancel", "abort"}
 ABORT_CHOICE: str = "__abort__"
-PROMPT_INSTRUCTION: str = "Enter to select; choose Abort or press Ctrl-C to cancel."
+SELECT_INSTRUCTION: str = "\n[ ↑↓ and ENTER to select | Ctrl-C to abort]\n"
+TEXT_INSTRUCTION: str = "\n[ ENTER for default | q or Ctrl-C to abort]\n"
+PROMPT_COLORS: dict[str, str] = {
+	"default": "",
+	"black": "ansiblack",
+	"red": "ansired",
+	"green": "ansigreen",
+	"yellow": "ansiyellow",
+	"blue": "ansiblue",
+	"magenta": "ansimagenta",
+	"cyan": "ansicyan",
+	"white": "ansiwhite",
+	"grey": "ansibrightblack",
+}
 
 
 class ShopAbort(Exception):
@@ -58,8 +71,9 @@ def main() -> int:
 		return 1
 
 	try:
+		prompt_style = build_prompt_style(config.quantity_color)
 		if args.short_name is None:
-			recipe = select_recipe(recipes)
+			recipe = select_recipe(recipes, prompt_style=prompt_style)
 		else:
 			try:
 				match: tuple[str, dict[str, Any]] | None = find_recipe_by_short_name(recipes, args.short_name)
@@ -73,8 +87,11 @@ def main() -> int:
 
 			_recipe_id, recipe = match
 
-		batch_size: float = prompt_for_batch_size(recipe)
-		include_on_hand: bool = prompt_for_include_on_hand(config.include_on_hand_default)
+		batch_size: float = prompt_for_batch_size(recipe, prompt_style=prompt_style)
+		include_on_hand: bool = prompt_for_include_on_hand(
+			config.include_on_hand_default,
+			prompt_style=prompt_style,
+		)
 	except ShopAbort:
 		print("Aborted.")
 		return 130
@@ -95,7 +112,11 @@ def main() -> int:
 	try:
 		delivery_result: DeliveryResult = get_delivery_target(
 			config.target_app,
-			target_selector=select_delivery_target,
+			target_selector=lambda target_name, options: select_delivery_target(
+				target_name,
+				options,
+				prompt_style=build_prompt_style(config.quantity_color),
+			),
 		).create_list(shopping_list, config)
 	except ShopAbort:
 		print("Aborted.")
@@ -123,11 +144,11 @@ def render_delivery_result(result: DeliveryResult) -> str:
 	)
 
 
-def select_recipe(recipes: dict[str, dict[str, Any]]) -> dict[str, Any]:
+def select_recipe(recipes: dict[str, dict[str, Any]], prompt_style=None) -> dict[str, Any]:
 	recipe_options: list[dict[str, Any]] = list(recipes.values())
 	choices: list[questionary.Choice] = [
 		questionary.Choice(
-			title=f"{recipe.get('short_name', recipe['name'])}: {recipe['name']}",
+			title=recipe["name"],
 			value=recipe,
 		)
 		for recipe in recipe_options
@@ -135,20 +156,25 @@ def select_recipe(recipes: dict[str, dict[str, Any]]) -> dict[str, Any]:
 	choices.append(questionary.Choice(title="Abort", value=ABORT_CHOICE))
 
 	selection = questionary.select(
-		"Select a recipe:",
+		"Select a Recipe",
 		choices=choices,
-		instruction=PROMPT_INSTRUCTION,
+		instruction=SELECT_INSTRUCTION,
+		pointer=">",
+		qmark="",
+		style=prompt_style,
 	)
 	return require_selection(ask_or_abort(selection))
 
 
-def prompt_for_batch_size(recipe: dict[str, Any]) -> float:
+def prompt_for_batch_size(recipe: dict[str, Any], prompt_style=None) -> float:
 	default_batch: float = float(recipe["default_batch"])
 	default_display: str = format_number(default_batch)
 	prompt = questionary.text(
-		f"Batch size [{default_display}]:",
+		f"Batch Size [{default_display}]",
 		validate=validate_batch_size,
-		instruction="Press Enter for default; type q to abort.",
+		instruction=TEXT_INSTRUCTION,
+		qmark="",
+		style=prompt_style,
 	)
 
 	selection = require_selection(ask_or_abort(prompt)).strip()
@@ -159,22 +185,29 @@ def prompt_for_batch_size(recipe: dict[str, Any]) -> float:
 	return float(selection)
 
 
-def prompt_for_include_on_hand(default: bool) -> bool:
+def prompt_for_include_on_hand(default: bool, prompt_style=None) -> bool:
 	choices: list[questionary.Choice] = [
 		questionary.Choice(title="Yes", value=True),
 		questionary.Choice(title="No", value=False),
 		questionary.Choice(title="Abort", value=ABORT_CHOICE),
 	]
 	selection = questionary.select(
-		"Include on-hand items?",
+		"Include On-Hand Items",
 		choices=choices,
 		default=choices[0] if default else choices[1],
-		instruction=PROMPT_INSTRUCTION,
+		instruction=SELECT_INSTRUCTION,
+		pointer=">",
+		qmark="",
+		style=prompt_style,
 	)
 	return require_selection(ask_or_abort(selection))
 
 
-def select_delivery_target(target_name: str, options: list[DeliveryTargetOption]) -> DeliveryTargetOption:
+def select_delivery_target(
+	target_name: str,
+	options: list[DeliveryTargetOption],
+	prompt_style=None,
+) -> DeliveryTargetOption:
 	print()
 	choices: list[questionary.Choice] = [
 		questionary.Choice(title=format_delivery_target_option(option), value=option)
@@ -182,9 +215,12 @@ def select_delivery_target(target_name: str, options: list[DeliveryTargetOption]
 	]
 	choices.append(questionary.Choice(title="Abort", value=ABORT_CHOICE))
 	selection = questionary.select(
-		f'Multiple lists with the name "{target_name}" were found. Which list would you like to add to?',
+		f'Choose a "{target_name}" List',
 		choices=choices,
-		instruction=PROMPT_INSTRUCTION,
+		instruction=SELECT_INSTRUCTION,
+		pointer=">",
+		qmark="",
+		style=prompt_style,
 	)
 	return require_selection(ask_or_abort(selection))
 
@@ -214,6 +250,23 @@ def validate_batch_size(selection: str) -> bool | str:
 		return "Enter a positive number."
 
 	return True
+
+
+def build_prompt_style(color_name: str):
+	color: str = PROMPT_COLORS[color_name]
+	if color == "":
+		return None
+
+	return questionary.Style.from_dict(
+		{
+			"pointer": f"{color} bold",
+			"highlighted": f"{color} bold",
+			"selected": color,
+			"answer": color,
+			"instruction": "ansibrightblack",
+			"question": "bold",
+		}
+	)
 
 
 def require_selection(selection):

@@ -24,6 +24,20 @@ class FakePrompt:
 		return self.result
 
 
+def test_select_recipe_displays_recipe_names_without_short_names(monkeypatch) -> None:
+	recipe = {"name": "Classic Chili", "short_name": "Chili"}
+	captured = {}
+
+	def fake_select(*args, **kwargs):
+		captured["choices"] = kwargs["choices"]
+		return FakePrompt(recipe)
+
+	monkeypatch.setattr(shop_script.questionary, "select", fake_select)
+
+	assert shop_script.select_recipe({"chili": recipe}) == recipe
+	assert captured["choices"][0].title == "Classic Chili"
+
+
 def test_prompt_for_include_on_hand_uses_false_default(monkeypatch) -> None:
 	monkeypatch.setattr(shop_script.questionary, "select", lambda *args, **kwargs: FakePrompt(False))
 
