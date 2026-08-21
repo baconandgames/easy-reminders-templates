@@ -402,6 +402,11 @@ def test_run_config_editor_returns_to_menu_after_saving(monkeypatch, tmp_path) -
 
 	monkeypatch.setattr(shop_script.questionary, "select", fake_select)
 	monkeypatch.setattr(shop_script, "edit_reminders_list_visibility", fake_edit_reminders_list_visibility)
+	monkeypatch.setattr(
+		shop_script,
+		"get_update_status",
+		lambda config: shop_script.UpdateStatus(current_version="0.1.4"),
+	)
 
 	assert shop_script.run_config_editor(config_path, Config()) == 0
 	assert menu_count == 2
@@ -421,6 +426,11 @@ def test_run_config_editor_saves_color_setting_and_returns_to_menu(monkeypatch, 
 
 	monkeypatch.setattr(shop_script.questionary, "select", fake_select)
 	monkeypatch.setattr(shop_script, "edit_color_settings", fake_edit_color_settings)
+	monkeypatch.setattr(
+		shop_script,
+		"get_update_status",
+		lambda config: shop_script.UpdateStatus(current_version="0.1.4"),
+	)
 
 	assert shop_script.run_config_editor(config_path, Config()) == 0
 	assert load_config(config_path).quantity_color == "cyan"
@@ -440,9 +450,81 @@ def test_run_config_editor_saves_option_setting_and_returns_to_menu(monkeypatch,
 
 	monkeypatch.setattr(shop_script.questionary, "select", fake_select)
 	monkeypatch.setattr(shop_script, "edit_options", fake_edit_options)
+	monkeypatch.setattr(
+		shop_script,
+		"get_update_status",
+		lambda config: shop_script.UpdateStatus(current_version="0.1.4"),
+	)
 
 	assert shop_script.run_config_editor(config_path, Config()) == 0
 	assert load_config(config_path).append_short_name is False
+
+
+def test_run_config_editor_shows_update_badge(monkeypatch, tmp_path) -> None:
+	config_path = tmp_path / "config.json"
+	captured = {}
+
+	def fake_select(*args, **kwargs):
+		captured["choices"] = kwargs["choices"]
+		return FakePrompt(shop_script.EXIT_CONFIG_CHOICE)
+
+	monkeypatch.setattr(shop_script.questionary, "select", fake_select)
+	monkeypatch.setattr(
+		shop_script,
+		"get_update_status",
+		lambda config: shop_script.UpdateStatus(
+			current_version="0.1.4",
+			latest_release=shop_script.ReleaseInfo(
+				version="0.1.5",
+				name="Beta polish",
+				body="Release notes",
+				url="https://github.com/example/release",
+			),
+		),
+	)
+
+	assert shop_script.run_config_editor(config_path, Config()) == 0
+	assert captured["choices"][3].title == "Check for Updates (1)"
+
+
+def test_handle_update_check_can_skip_release(monkeypatch, tmp_path) -> None:
+	config_path = tmp_path / "config.json"
+	release = shop_script.ReleaseInfo(
+		version="0.1.5",
+		name="Beta polish",
+		body="Release notes",
+		url="https://github.com/example/release",
+	)
+	update_status = shop_script.UpdateStatus(current_version="0.1.4", latest_release=release)
+
+	monkeypatch.setattr(shop_script.questionary, "select", lambda *args, **kwargs: FakePrompt("skip_update"))
+
+	config = shop_script.handle_update_check(config_path, Config(), update_status)
+
+	assert config.skipped_update_version == "0.1.5"
+	assert load_config(config_path).skipped_update_version == "0.1.5"
+
+
+def test_render_update_changelog_includes_release_notes() -> None:
+	release = shop_script.ReleaseInfo(
+		version="0.1.5",
+		name="Beta polish",
+		body="Release notes",
+		url="https://github.com/example/release",
+	)
+
+	assert shop_script.render_update_changelog("0.1.4", release) == (
+		"Update Available\n"
+		"----------------\n"
+		"Current: 0.1.4\n"
+		"Latest: 0.1.5\n"
+		"Release: Beta polish\n"
+		"URL: https://github.com/example/release\n"
+		"\n"
+		"Changelog\n"
+		"---------\n"
+		"Release notes"
+	)
 
 
 def test_exit_config_choice_uses_plain_exit_label() -> None:

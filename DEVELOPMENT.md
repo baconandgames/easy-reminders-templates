@@ -130,17 +130,18 @@ install path has been tested on a clean Mac.
 
 ### Update Checking
 
-Add update awareness to `listkit config`, not to the normal `listkit` flow.
+Update awareness belongs in `listkit config`, not in the normal `listkit` flow.
+The implemented baseline checks GitHub Releases, shows release notes, prints the
+manual update command, and allows a user to skip the current release.
 
 For `pipx upgrade easy-reminder-templates` to pick up changes from GitHub, the
 package version in `pyproject.toml` must increase. Until a release process is
 formalized, bump the version for any pushed change that testers should receive
 through `pipx upgrade`.
 
-Planned behavior:
+Current behavior:
 
-- On opening `listkit config`, quietly check GitHub releases or tags.
-- Cache the update check result for about a day so the config menu stays fast.
+- On opening `listkit config`, quietly check GitHub Releases.
 - If a newer version exists, show the config menu item as `Check for Updates (1)`.
 - Opening that item should show the available version, release notes, and choices:
   - show the manual update command
@@ -150,6 +151,10 @@ Planned behavior:
   `pipx upgrade easy-reminder-templates`
 - Store skipped versions in config so a skipped version stays quiet, but a newer
   version appears later.
+
+Future improvement:
+
+- Cache the update check result for about a day so the config menu stays fast.
 
 Do not make the app run `pipx upgrade` automatically in the first version of
 this feature. Automatic updates can be considered later, but they add more

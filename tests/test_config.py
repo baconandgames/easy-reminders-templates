@@ -21,13 +21,14 @@ def test_load_config_uses_defaults_when_file_is_missing() -> None:
 	assert config.quantity_color == "#37b7f0"
 	assert config.selection_color == "#ff4b1f"
 	assert config.omitted_ingredient_color == "#777777"
+	assert config.skipped_update_version == ""
 
 
 def test_load_config_reads_values() -> None:
 	with TemporaryDirectory() as directory:
 		path: Path = Path(directory) / "config.json"
 		path.write_text(
-			'{"target_app": "apple_reminders", "delivery_mode": "create", "apple_reminders_list_id": "abc123", "apple_reminders_list_name": "Shared Grocery", "hidden_apple_reminders_list_ids": ["list-1", "list-2"], "append_short_name": false, "include_on_hand_default": true, "standard_text_color": "white", "quantity_color": "#37B7F0", "selection_color": "red", "omitted_ingredient_color": "grey"}',
+			'{"target_app": "apple_reminders", "delivery_mode": "create", "apple_reminders_list_id": "abc123", "apple_reminders_list_name": "Shared Grocery", "hidden_apple_reminders_list_ids": ["list-1", "list-2"], "append_short_name": false, "include_on_hand_default": true, "standard_text_color": "white", "quantity_color": "#37B7F0", "selection_color": "red", "omitted_ingredient_color": "grey", "skipped_update_version": "0.1.5"}',
 			encoding="utf-8",
 		)
 
@@ -43,6 +44,7 @@ def test_load_config_reads_values() -> None:
 	assert config.quantity_color == "#37b7f0"
 	assert config.selection_color == "red"
 	assert config.omitted_ingredient_color == "grey"
+	assert config.skipped_update_version == "0.1.5"
 
 
 def test_load_config_rejects_invalid_boolean_values() -> None:
@@ -77,6 +79,7 @@ def test_save_config_writes_values() -> None:
 			Config(
 				apple_reminders_list_name="Shared Grocery",
 				hidden_apple_reminders_list_ids=["list-1"],
+				skipped_update_version="0.1.5",
 			),
 		)
 
@@ -86,6 +89,7 @@ def test_save_config_writes_values() -> None:
 	assert data["apple_reminders_list_name"] == "Shared Grocery"
 	assert data["hidden_apple_reminders_list_ids"] == ["list-1"]
 	assert data["selection_color"] == "#ff4b1f"
+	assert data["skipped_update_version"] == "0.1.5"
 
 
 def test_load_config_rejects_invalid_hidden_reminders_list_ids() -> None:

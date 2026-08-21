@@ -27,6 +27,7 @@ class Config:
 	quantity_color: str = DEFAULT_QUANTITY_COLOR
 	selection_color: str = DEFAULT_SELECTION_COLOR
 	omitted_ingredient_color: str = DEFAULT_OMITTED_INGREDIENT_COLOR
+	skipped_update_version: str = ""
 
 
 class ConfigLoadError(Exception):
@@ -71,6 +72,11 @@ def load_config(path: Path) -> Config:
 		"omitted_ingredient_color",
 		Config.omitted_ingredient_color,
 	)
+	skipped_update_version: str = _read_optional_string(
+		raw_data,
+		"skipped_update_version",
+		Config.skipped_update_version,
+	)
 
 	return Config(
 		target_app=target_app,
@@ -83,6 +89,7 @@ def load_config(path: Path) -> Config:
 		quantity_color=quantity_color,
 		selection_color=selection_color,
 		omitted_ingredient_color=omitted_ingredient_color,
+		skipped_update_version=skipped_update_version,
 	)
 
 
@@ -98,6 +105,7 @@ def save_config(path: Path, config: Config) -> None:
 		"quantity_color": config.quantity_color,
 		"selection_color": config.selection_color,
 		"omitted_ingredient_color": config.omitted_ingredient_color,
+		"skipped_update_version": config.skipped_update_version,
 	}
 	path.write_text(f"{json.dumps(data, indent=2)}\n", encoding="utf-8")
 

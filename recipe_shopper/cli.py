@@ -6,7 +6,7 @@ import os
 import shutil
 import sys
 from collections import Counter
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -45,6 +45,14 @@ from recipe_shopper.templates import (
 	template_has_on_hand_items,
 	template_uses_batch_size,
 )
+from recipe_shopper.updates import (
+	UPDATE_COMMAND,
+	ReleaseInfo,
+	UpdateCheckError,
+	fetch_latest_release,
+	get_current_version,
+	is_newer_version,
+)
 
 
 ABORT_COMMANDS: set[str] = {"q", "quit", "cancel", "abort"}
@@ -61,6 +69,7 @@ CONFIG_LIST_INSTRUCTION: str = "\n[SPACE to show/hide lists | ENTER to save | Ct
 COLOR_MENU_INSTRUCTION: str = "\n[ENTER to edit | ESC to return | Ctrl-C to quit]\n"
 COLOR_PICKER_CONTROLS: str = "[ENTER to save | ESC to return | Ctrl-C to quit]"
 OPTIONS_MENU_INSTRUCTION: str = "\n[ENTER to edit | ESC to return | Ctrl-C to quit]\n"
+UPDATE_MENU_INSTRUCTION: str = "\n[ENTER to select | ESC to return | Ctrl-C to quit]\n"
 TRUNCATED_SAMPLE_LENGTH: int = 11
 CONFIG_COLOR_OPTIONS: tuple[str, ...] = (
 	"black",
@@ -90,6 +99,14 @@ APP_NAME: str = "Easy Reminder Templates"
 
 class ShopAbort(Exception):
 	pass
+
+
+@dataclass(frozen=True)
+class UpdateStatus:
+	current_version: str
+	latest_release: ReleaseInfo | None = None
+	skipped_release: ReleaseInfo | None = None
+	error: str = ""
 
 
 def configure_questionary_checkbox_rendering() -> None:
@@ -455,6 +472,7 @@ def select_template(templates: dict[str, dict[str, Any]], prompt_style=None) -> 
 
 
 def run_config_editor(config_path: Path, config: Config, prompt_style=None) -> int:
+	update_status: UpdateStatus = get_update_status(config)
 	while True:
 		print()
 		selection = questionary.select(
@@ -463,6 +481,7 @@ def run_config_editor(config_path: Path, config: Config, prompt_style=None) -> i
 				questionary.Choice(title="Reminders Lists", value="reminders_lists"),
 				questionary.Choice(title="Colors", value="colors"),
 				questionary.Choice(title="Options", value="options"),
+				questionary.Choice(title=format_update_menu_title(update_status), value="updates"),
 				exit_config_choice(),
 			],
 			instruction=SELECT_INSTRUCTION,
@@ -489,8 +508,101 @@ def run_config_editor(config_path: Path, config: Config, prompt_style=None) -> i
 			config = edit_options(config_path, config, prompt_style=prompt_style)
 			continue
 
+		if action == "updates":
+			config = handle_update_check(config_path, config, update_status, prompt_style=prompt_style)
+			update_status = get_update_status(config)
+			continue
+
 		print()
 		print("Not implemented yet.")
+
+
+def get_update_status(config: Config) -> UpdateStatus:
+	current_version: str = get_current_version()
+	try:
+		latest_release: ReleaseInfo = fetch_latest_release()
+	except UpdateCheckError as error:
+		return UpdateStatus(current_version=current_version, error=str(error))
+
+	if not is_newer_version(latest_release.version, current_version):
+		return UpdateStatus(current_version=current_version)
+
+	if latest_release.version == config.skipped_update_version:
+		return UpdateStatus(current_version=current_version, skipped_release=latest_release)
+
+	return UpdateStatus(current_version=current_version, latest_release=latest_release)
+
+
+def format_update_menu_title(update_status: UpdateStatus) -> str:
+	if update_status.latest_release is None:
+		return "Check for Updates"
+
+	return "Check for Updates (1)"
+
+
+def handle_update_check(
+	config_path: Path,
+	config: Config,
+	update_status: UpdateStatus,
+	prompt_style=None,
+) -> Config:
+	if update_status.error != "":
+		print()
+		print(f"Update check unavailable: {update_status.error}")
+		return config
+
+	if update_status.latest_release is None and update_status.skipped_release is None:
+		print()
+		print(f"Up to date: {update_status.current_version}")
+		return config
+
+	release: ReleaseInfo = update_status.latest_release or update_status.skipped_release
+	print()
+	print(render_update_changelog(update_status.current_version, release))
+	choices: list[questionary.Choice] = [
+		questionary.Choice(title="Show Update Command", value="show_command"),
+		questionary.Choice(title=f"Skip {release.version}", value="skip_update"),
+		back_config_choice(),
+	]
+	selection = questionary.select(
+		"",
+		choices=choices,
+		instruction=UPDATE_MENU_INSTRUCTION,
+		pointer=">",
+		qmark="Update Available",
+		style=prompt_style,
+	)
+	bind_escape_value(selection, BACK_CONFIG_CHOICE)
+	action = require_config_selection(ask_or_abort(selection))
+	if action == BACK_CONFIG_CHOICE:
+		return config
+
+	if action == "show_command":
+		print()
+		print("Update command:")
+		print(UPDATE_COMMAND)
+		return config
+
+	config = replace(config, skipped_update_version=release.version)
+	save_config(config_path, config)
+	print()
+	print(f"Skipped {release.version}")
+	return config
+
+
+def render_update_changelog(current_version: str, release: ReleaseInfo) -> str:
+	lines: list[str] = [
+		"Update Available",
+		"----------------",
+		f"Current: {current_version}",
+		f"Latest: {release.version}",
+	]
+	if release.name != "":
+		lines.append(f"Release: {release.name}")
+	if release.url != "":
+		lines.append(f"URL: {release.url}")
+	lines.extend(["", "Changelog", "---------", release.body.strip() or "No release notes provided."])
+	return "\n".join(lines)
 
 
 def edit_reminders_list_visibility(config: Config, prompt_style=None) -> Config:

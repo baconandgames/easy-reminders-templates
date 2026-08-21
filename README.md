@@ -66,6 +66,16 @@ To update an existing install:
 pipx upgrade easy-reminder-templates
 ```
 
+You can also check for updates from the config menu:
+
+```sh
+listkit config
+```
+
+The update checker uses GitHub Releases. If a newer release exists, `listkit`
+shows its changelog before offering the manual update command. You can also skip
+that release; a later release will appear again.
+
 ## First Run
 
 Open the config menu first:
@@ -200,7 +210,8 @@ text editor.
   "standard_text_color": "#f2f0ea",
   "quantity_color": "#37b7f0",
   "selection_color": "#ff4b1f",
-  "omitted_ingredient_color": "#777777"
+  "omitted_ingredient_color": "#777777",
+  "skipped_update_version": ""
 }
 ```
 
@@ -232,5 +243,5 @@ When `apple_reminders_list_id` is set, it is preferred over
 `apple_reminders_list_name`.
 
 Run `listkit config` to choose which Apple Reminders lists appear in the target
-list picker, edit terminal colors, and update common options. Hidden lists are stored in
-`hidden_apple_reminders_list_ids`.
+list picker, edit terminal colors, update common options, and check for GitHub
+release updates. Hidden lists are stored in `hidden_apple_reminders_list_ids`.
