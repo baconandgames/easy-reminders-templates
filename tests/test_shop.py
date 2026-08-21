@@ -504,9 +504,14 @@ def test_select_delivery_target_can_create_new_list_when_no_lists_exist(monkeypa
 		item_count=0,
 		sample_items=[],
 	)
+	captured = {}
 
 	def fake_select(*args, **kwargs):
-		return FakePrompt(kwargs["choices"][0].value)
+		raise AssertionError("Expected empty target state to skip the list picker")
+
+	def fake_text(*args, **kwargs):
+		captured["instruction"] = kwargs["instruction"]
+		return FakePrompt("Beach")
 
 	class FakeAppleRemindersTarget:
 		def create_target(self, list_name):
@@ -514,10 +519,14 @@ def test_select_delivery_target_can_create_new_list_when_no_lists_exist(monkeypa
 			return target
 
 	monkeypatch.setattr(shop_script.questionary, "select", fake_select)
-	monkeypatch.setattr(shop_script.questionary, "text", lambda *args, **kwargs: FakePrompt("Beach"))
+	monkeypatch.setattr(shop_script.questionary, "text", fake_text)
 	monkeypatch.setattr(shop_script, "AppleRemindersTarget", FakeAppleRemindersTarget)
 
 	assert shop_script.select_delivery_target("General", []) == target
+	assert captured["instruction"] == (
+		"\nNo visible Reminders lists are available. Enter a name for a new list to continue.\n"
+		"[ENTER to create | ESC to exit | Ctrl-C to quit]\n"
+	)
 
 
 def test_select_delivery_target_can_hide_create_new_list_choice(monkeypatch) -> None:

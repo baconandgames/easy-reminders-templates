@@ -1135,6 +1135,17 @@ def select_delivery_target(
 		choices.append(create_new_list_choice())
 	navigation_choice = exit_choice or abort_choice()
 	choices.append(navigation_choice)
+
+	if len(options) == 0 and allow_create_new:
+		description = "No visible Reminders lists are available."
+		if omitted_count > 0:
+			description = "All Reminders lists are currently hidden by config.json."
+		return prompt_for_new_delivery_target(
+			prompt_style=prompt_style,
+			escape_value=navigation_choice.value,
+			instruction_description=f"{description} Enter a name for a new list to continue.",
+		)
+
 	selection = questionary.select(
 		"",
 		choices=choices,
@@ -1162,13 +1173,17 @@ def select_delivery_target(
 	return prompt_for_new_delivery_target(prompt_style=prompt_style, escape_value=navigation_choice.value)
 
 
-def prompt_for_new_delivery_target(prompt_style=None, escape_value: str = ABORT_CHOICE) -> DeliveryTargetOption | str:
+def prompt_for_new_delivery_target(
+	prompt_style=None,
+	escape_value: str = ABORT_CHOICE,
+	instruction_description: str = "Enter a name for the new Reminders list.",
+) -> DeliveryTargetOption | str:
 	prompt = questionary.text(
 		"",
 		validate=validate_new_list_name,
 		qmark="New Reminder List",
 		instruction=format_prompt_instruction(
-			"Enter a name for the new Reminders list.",
+			instruction_description,
 			f"[ENTER to create | ESC to {escape_control_word(escape_value)} | Ctrl-C to quit]",
 		),
 		style=prompt_style,
