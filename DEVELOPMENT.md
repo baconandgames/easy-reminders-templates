@@ -125,8 +125,24 @@ These have intentionally been postponed.
 
 ## Planned Follow-Up Work
 
-These are not part of the first install test. Revisit them after the GitHub
-install path has been tested on a clean Mac.
+Track completed alpha milestones separately from open roadmap items so old
+planning notes do not read like unfinished work.
+
+### Completed Alpha Milestones
+
+- Installable `listkit` command through `pipx`.
+- GitHub install and upgrade path tested on a clean Mac.
+- Apple Reminders integration through EventKit.
+- Config menu for visible Reminders lists, colors, defaults, and updates.
+- GitHub Releases update checker with changelog display, skip-current-version,
+  and copied manual update command.
+- One JSON file per template.
+- Recipe templates with quantities, units, batch scaling, and on-hand items.
+- Basic list templates without quantities or units.
+- Create-template-from-existing-Reminders-list flow.
+- Empty/no-visible-Reminders-list flow that prompts for a new list instead of
+  showing an empty picker.
+- Bundled examples for recipes, packing/travel, and recurring store purchases.
 
 ### Update Checking
 
@@ -155,6 +171,15 @@ Current behavior:
 Future improvement:
 
 - Cache the update check result for about a day so the config menu stays fast.
+- Add lightweight startup update awareness without checking GitHub on every
+  launch. Store `last_update_check_at` and possibly
+  `launch_count_since_update_check` in `config.json`. On normal `listkit`
+  startup, check only when either:
+  - the last check was more than about 30 days ago, or
+  - the app has launched about 10 times since the last check.
+- If a startup check finds an update, show a small non-blocking notice that
+  points users to `listkit config > Check for Updates`. Keep the full changelog,
+  skip, and copied update-command flow inside config.
 
 Do not make the app run `pipx upgrade` automatically in the first version of
 this feature. Automatic updates can be considered later, but they add more
@@ -287,22 +312,19 @@ omitted.
 
 ### Create Template from Existing Reminders List
 
-Add a reverse flow that starts from an Apple Reminders list and saves it as a
-template.
+Implemented as an app-level action in the main `listkit` flow:
 
-Possible command:
-
-```sh
-listkit template-from-list
+```text
+[ + Create Template from List ]
 ```
 
-Planned flow:
+Current flow:
 
 1. Show available Apple Reminders lists.
 2. Let the user select a source list.
 3. Read incomplete reminders from that list.
 4. Ask for a template name and optional short name.
-5. Save a new template file.
+5. Save a new list template file under `templates/lists/`.
 
 Initial scope should stay conservative:
 
@@ -311,33 +333,53 @@ Initial scope should stay conservative:
 - Omit notes, URLs, due dates, tags, and priorities in the first version.
 - If a template name already exists, prompt to replace, rename, or cancel.
 
-This becomes more natural after moving to the generic template/item schema.
+Future improvement:
+
+- Consider whether this should also be available from a dedicated template
+  management screen after the Mole-style app-shell decision.
 
 ### Reminders List Identity and Recovery
 
 Keep using Reminders list IDs as the durable target identity, with list names as
 cached display text.
 
-Expected behavior:
+Current behavior:
+
+- If the ID exists but the name changed, silently update the cached name.
+- If the ID is missing, fall back to matching the stored name.
+- During normal `listkit` runs, show the Reminders list picker before sending so
+  stale config can be corrected before writing anything.
+- If no visible Reminders lists are available, prompt for a new list name.
+
+Future improvements:
 
 - When `listkit config` loads the default Reminders list setting, validate the
   stored list ID against current Reminders lists.
-- If the ID exists but the name changed, silently update the cached name.
-- If the ID is missing, fall back to matching the stored name.
-- If the name has one match, save that new ID.
-- If the name has multiple matches or no matches, prompt the user to choose or
-  create a list.
-- During normal `listkit` runs, still show the Reminders list picker before sending so
-  stale config can be corrected before writing anything.
-
-For a user with no Reminders lists, prompt rather than assuming:
-
-- create a list using the template name
-- enter a different list name
-- cancel
+- If the stored ID is missing but the stored name has one match, save that new ID.
+- If the stored name has multiple matches or no matches, prompt the user to
+  choose or create a list.
+- If Reminders itself has no lists, consider offering:
+  - create a list using the template name
+  - enter a different list name
+  - cancel
 
 Do not default to the short name for new list creation. Short names are intended
 as compact tags and may not be user-facing enough.
+
+### Stable Alpha Checklist
+
+Before asking outside testers for broader feedback:
+
+- Confirm sample templates communicate the three main use cases clearly:
+  recipes, packing/travel, and recurring store purchases.
+- Do a clean install on at least one Intel Mac and one Apple Silicon Mac.
+- Test first-run Reminders permission behavior.
+- Test update checking against a real GitHub Release.
+- Test creating a list from each bundled sample.
+- Test creating a template from a real Reminders list.
+- Review README and template docs from a new-user perspective.
+- Decide whether to keep the current prompt flow for alpha feedback or move
+  first toward the Mole-style app shell.
 
 ### Config Migrations Before v1.0
 

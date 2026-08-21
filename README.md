@@ -155,6 +155,9 @@ See [TEMPLATES.md](TEMPLATES.md) for the full JSON template guide, including
 examples, field descriptions, blank-value behavior, and how to create a template
 from an existing Apple Reminders list.
 
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the current alpha contribution
+policy.
+
 Bundled examples show three common use cases:
 
 - `Classic Chili` (`listkit chili`): a recipe with batch scaling and optional
