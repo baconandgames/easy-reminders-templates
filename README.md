@@ -5,9 +5,9 @@
 > so consider testing with a throwaway Reminders list first.
 
 Easy Reminder Templates is a local command-line tool for creating Apple
-Reminders lists from reusable JSON templates. Recipes are the first supported
-template type, but the format is intended to work for repeatable lists like
-packing lists, trip prep, chores, or project checklists.
+Reminders lists from reusable JSON templates. It can handle recipe ingredient
+lists, packing checklists, recurring store purchases, chores, trip prep, or
+project checklists.
 
 ## Install
 
@@ -148,11 +148,21 @@ templates/
     classic-chili.json
   lists/
     beach-day.json
+    trader-joes-common-purchases.json
 ```
 
 See [TEMPLATES.md](TEMPLATES.md) for the full JSON template guide, including
 examples, field descriptions, blank-value behavior, and how to create a template
 from an existing Apple Reminders list.
+
+Bundled examples show three common use cases:
+
+- `Classic Chili` (`listkit chili`): a recipe with batch scaling and optional
+  on-hand ingredients.
+- `Beach Day` (`listkit beach`): a reusable packing checklist.
+- `Trader Joe's Common Purchases` (`listkit tjs`): a store-specific staples list
+  where usually-bought items start selected and occasional purchases are marked
+  as on-hand.
 
 ## Configuration
 

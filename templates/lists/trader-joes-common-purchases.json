@@ -1,0 +1,111 @@
+{
+  "schema_version": 1,
+  "type": "list",
+  "name": "Trader Joe's Common Purchases",
+  "short_name": "tjs",
+  "default_batch": "",
+  "items": [
+    {
+      "name": "Mini cones",
+      "quantity": "",
+      "unit": "",
+      "always_on_hand": false
+    },
+    {
+      "name": "Coffee pods",
+      "quantity": "",
+      "unit": "",
+      "always_on_hand": false
+    },
+    {
+      "name": "Chili lime seasoning",
+      "quantity": "",
+      "unit": "",
+      "always_on_hand": true
+    },
+    {
+      "name": "Dog treats",
+      "quantity": "",
+      "unit": "",
+      "always_on_hand": true
+    },
+    {
+      "name": "Cheese spread",
+      "quantity": "",
+      "unit": "",
+      "always_on_hand": false
+    },
+    {
+      "name": "Whole grain bread",
+      "quantity": "",
+      "unit": "",
+      "always_on_hand": false
+    },
+    {
+      "name": "Whole wheat English muffins",
+      "quantity": "",
+      "unit": "",
+      "always_on_hand": false
+    },
+    {
+      "name": "Tomato soup",
+      "quantity": "",
+      "unit": "",
+      "always_on_hand": false
+    },
+    {
+      "name": "Olives",
+      "quantity": "",
+      "unit": "",
+      "always_on_hand": false
+    },
+    {
+      "name": "Pizza sauce",
+      "quantity": "",
+      "unit": "",
+      "always_on_hand": false
+    },
+    {
+      "name": "Ramen noodles",
+      "quantity": "",
+      "unit": "",
+      "always_on_hand": false
+    },
+    {
+      "name": "Sunscreen",
+      "quantity": "",
+      "unit": "",
+      "always_on_hand": false
+    },
+    {
+      "name": "Assorted crackers",
+      "quantity": "",
+      "unit": "",
+      "always_on_hand": true
+    },
+    {
+      "name": "Capers",
+      "quantity": "",
+      "unit": "",
+      "always_on_hand": true
+    },
+    {
+      "name": "Soyaki sauce",
+      "quantity": "",
+      "unit": "",
+      "always_on_hand": true
+    },
+    {
+      "name": "Curry packets",
+      "quantity": "",
+      "unit": "",
+      "always_on_hand": true
+    },
+    {
+      "name": "Chili oil crunch",
+      "quantity": "",
+      "unit": "",
+      "always_on_hand": true
+    }
+  ]
+}

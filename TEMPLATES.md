@@ -17,6 +17,7 @@ templates/
     classic-chili.json
   lists/
     beach-day.json
+    trader-joes-common-purchases.json
 ```
 
 When ListKit is installed outside this repository, user templates live in:
@@ -36,6 +37,15 @@ ListKit currently supports two template types:
 
 Both types use the same basic JSON structure. A `list` template can still include
 quantities later if needed.
+
+The bundled templates show three different use cases:
+
+- `Classic Chili` (`listkit chili`): recipe scaling with quantities, units, and
+  optional on-hand ingredients.
+- `Beach Day` (`listkit beach`): a reusable packing checklist.
+- `Trader Joe's Common Purchases` (`listkit tjs`): a recurring store list where
+  frequent purchases start selected and occasional purchases are marked
+  `always_on_hand`.
 
 ## Minimal Basic List
 
@@ -103,7 +113,7 @@ listkit beach
 | `name` | Yes | Item | Item name shown in ListKit and sent to Reminders. |
 | `quantity` | No | Item | Number scaled by batch size when present. |
 | `unit` | No | Item | Singular unit name, such as `can`, `clove`, `tbsp`, or `lb`. |
-| `always_on_hand` | No | Item | `true` means the item starts unchecked when on-hand items are excluded. Defaults to `false`. |
+| `always_on_hand` | No | Item | `true` means the item starts unchecked when on-hand items are excluded. Defaults to `false`. Useful for recipe pantry staples, travel items you usually keep packed, or store items you buy only sometimes. |
 
 ## Blank Values
 
