@@ -217,9 +217,9 @@ def main() -> int:
 	try:
 		prompt_style = build_prompt_style(config.selection_color)
 		print()
-		print(style_instruction(START_INSTRUCTION))
-		print()
 		if args.short_name is None:
+			print(style_instruction(START_INSTRUCTION))
+			print()
 			template = select_template(templates, prompt_style=prompt_style)
 		else:
 			try:
@@ -229,10 +229,12 @@ def main() -> int:
 				return 1
 
 			if match is None:
-				print(f'Error: no template found with short name "{args.short_name}".', file=sys.stderr)
+				print(render_missing_template_error(args.short_name, templates), file=sys.stderr)
 				return 1
 
 			_template_id, template = match
+			print(style_instruction(START_INSTRUCTION))
+			print()
 			print_selected_template(template["name"], config.selection_color)
 
 		batch_size: float | None = None
@@ -403,6 +405,31 @@ def render_help(config: Config) -> str:
 def render_help_row(label: str, description: str, color_name: str) -> str:
 	padding: str = " " * max(2, 24 - len(label))
 	return f"{style_text(label, color_name)}{padding}{description}"
+
+
+def render_missing_template_error(short_name: str, templates: dict[str, dict[str, Any]]) -> str:
+	return "\n".join(
+		[
+			f'Error: no template found with short name "{short_name}".',
+			"",
+			"Available templates:",
+			*format_available_templates(templates),
+			"",
+			"Run `listkit` to choose from the menu.",
+		]
+	)
+
+
+def format_available_templates(templates: dict[str, dict[str, Any]]) -> list[str]:
+	return [f"- {format_available_template(template)}" for template in templates.values()]
+
+
+def format_available_template(template: dict[str, Any]) -> str:
+	short_name: Any = template.get("short_name")
+	if isinstance(short_name, str) and short_name != "":
+		return f"{template['name']} [{short_name}]"
+
+	return template["name"]
 
 
 def select_template(templates: dict[str, dict[str, Any]], prompt_style=None) -> dict[str, Any]:

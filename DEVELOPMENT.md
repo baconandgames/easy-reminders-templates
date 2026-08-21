@@ -155,6 +155,37 @@ Do not make the app run `pipx upgrade` automatically in the first version of
 this feature. Automatic updates can be considered later, but they add more
 failure modes around permissions, shell environment, rollback, and support.
 
+### Mole-Style Terminal App UX
+
+Revisit this after the core creation/config/template flows are more stable.
+
+Current `listkit` behavior is a linear prompt flow: prompt, answer, prompt,
+answer, print output. Longer term, the CLI should feel more like a terminal
+application while still running fully inside Terminal.
+
+Recommended direction:
+
+- Add a top-level menu when running `listkit` with no arguments:
+  - Create List
+  - Manage Templates
+  - Config
+  - Help
+  - Quit
+- Give each screen a consistent shape:
+  - title
+  - short status/context line
+  - body/menu
+  - footer with controls, such as `[↑↓ select | Enter confirm | Esc back | Ctrl-C quit]`
+- Prefer redrawing screens over leaving every previous prompt in scrollback.
+  This is the main shift from “chatty wizard” to “terminal app.”
+- Keep questionary for the first pass if it remains adequate.
+- Consider a real TUI framework later, such as Textual or a direct
+  `prompt_toolkit` application, if questionary becomes too limiting.
+
+Do not start with a full TUI rewrite. First add the main menu and consistent
+screen footer once the user flows are stable enough that the layout will not be
+rewritten every few commits.
+
 ### Template Storage Model
 
 Templates now use one JSON file per template.

@@ -78,6 +78,28 @@ def test_render_help_uses_app_color_scheme() -> None:
 	assert "\033[36mtemplate-short-name\033[0m     Optional shortcut for a template" in help_text
 
 
+def test_render_missing_template_error_lists_available_templates() -> None:
+	templates = {
+		"classic-chili": {"name": "Classic Chili", "short_name": "chili"},
+		"beach-day": {"name": "Beach Day", "short_name": "beach"},
+	}
+
+	assert shop_script.render_missing_template_error("chli", templates) == (
+		'Error: no template found with short name "chli".\n'
+		"\n"
+		"Available templates:\n"
+		"- Classic Chili [chili]\n"
+		"- Beach Day [beach]\n"
+		"\n"
+		"Run `listkit` to choose from the menu."
+	)
+
+
+def test_format_available_template_omits_empty_short_name() -> None:
+	assert shop_script.format_available_template({"name": "Packing", "short_name": ""}) == "Packing"
+	assert shop_script.format_available_template({"name": "Packing"}) == "Packing"
+
+
 def test_select_template_displays_template_names_without_short_names(monkeypatch) -> None:
 	template = {"name": "Classic Chili", "short_name": "Chili"}
 	captured = {}
