@@ -160,6 +160,50 @@ Do not make the app run `pipx upgrade` automatically in the first version of
 this feature. Automatic updates can be considered later, but they add more
 failure modes around permissions, shell environment, rollback, and support.
 
+### Release Checklist
+
+Use this checklist whenever publishing a version that testers should be able to
+install or upgrade to with `pipx`.
+
+1. Decide the next version number.
+2. Update `version` in `pyproject.toml`.
+3. Run the test suite:
+
+```sh
+PYTHONPATH=. pytest
+```
+
+4. Verify the source version:
+
+```sh
+PYTHONPATH=. python -m recipe_shopper.cli --version
+```
+
+5. Commit the version bump and code/docs changes.
+6. Push `main`.
+7. Create a GitHub Release whose tag exactly matches the package version:
+   `v0.1.9` for package version `0.1.9`.
+8. Confirm the release tag points at the commit containing that same
+   `pyproject.toml` version.
+9. On a test Mac, run:
+
+```sh
+pipx upgrade easy-reminder-templates
+listkit --version
+```
+
+The version shown by `listkit --version`, the GitHub Release tag, and
+`pyproject.toml` should all match.
+
+Important: GitHub Releases and Python package metadata are separate. The update
+checker reads GitHub Releases, but `pipx upgrade` installs package metadata from
+the tagged commit. If a release tag says `v0.1.9` but `pyproject.toml` still says
+`0.1.8`, `listkit` will detect `0.1.9` but `pipx upgrade` will remain on
+`0.1.8`.
+
+Test releases can be deleted after validation. Delete both the release and the
+tag when cleaning up test-only versions.
+
 ### Mole-Style Terminal App UX
 
 Revisit this after the core creation/config/template flows are more stable.

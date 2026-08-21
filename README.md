@@ -64,6 +64,7 @@ To update an existing install:
 
 ```sh
 pipx upgrade easy-reminder-templates
+listkit --version
 ```
 
 You can also check for updates from the config menu:
@@ -75,6 +76,9 @@ listkit config
 The update checker uses GitHub Releases. If a newer release exists, `listkit`
 shows its changelog before offering the manual update command. You can also skip
 that release; a later release will appear again.
+
+For maintainers: the GitHub Release tag and the package version in
+`pyproject.toml` must match for `pipx upgrade` to install the expected version.
 
 ## First Run
 
