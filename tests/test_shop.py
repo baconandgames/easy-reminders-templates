@@ -4,6 +4,7 @@ import importlib.util
 from importlib.machinery import SourceFileLoader
 from pathlib import Path
 
+from src.config import Config
 from src.delivery import DeliveryResult, DeliveryTargetOption
 from src.formatter import build_shopping_list
 
@@ -239,15 +240,89 @@ def test_select_delivery_target_defaults_to_configured_list_and_details_duplicat
 	def fake_select(*args, **kwargs):
 		captured["choices"] = kwargs["choices"]
 		captured["default"] = kwargs["default"]
+		captured["instruction"] = kwargs["instruction"]
 		return FakePrompt(options[1])
 
 	monkeypatch.setattr(shop_script.questionary, "select", fake_select)
 
-	assert shop_script.select_delivery_target("Test", options) == options[1]
+	assert shop_script.select_delivery_target("Test", options, omitted_count=2) == options[1]
 	assert captured["choices"][0].title == "General (1)"
 	assert captured["choices"][1].title == "Test (6) - Bacon"
 	assert captured["choices"][2].title == "Test (0)"
 	assert captured["default"] == captured["choices"][1]
+	assert captured["instruction"] == "2 lists omitted per config.json"
+
+
+def test_edit_reminders_list_visibility_stores_hidden_ids(monkeypatch) -> None:
+	options = [
+		DeliveryTargetOption(
+			identifier="list-1",
+			name="General",
+			source="iCloud",
+			item_count=1,
+			sample_items=[],
+		),
+		DeliveryTargetOption(
+			identifier="list-2",
+			name="Archive",
+			source="iCloud",
+			item_count=0,
+			sample_items=[],
+		),
+	]
+	captured = {}
+
+	class FakeAppleRemindersTarget:
+		def list_targets(self):
+			return options
+
+	def fake_checkbox(*args, **kwargs):
+		captured["choices"] = kwargs["choices"]
+		return FakePrompt(["list-1"])
+
+	monkeypatch.setattr(shop_script, "AppleRemindersTarget", FakeAppleRemindersTarget)
+	monkeypatch.setattr(shop_script.questionary, "checkbox", fake_checkbox)
+
+	config = shop_script.edit_reminders_list_visibility(
+		Config(hidden_apple_reminders_list_ids=["list-2"]),
+	)
+
+	assert captured["choices"][0].checked is True
+	assert captured["choices"][1].checked is False
+	assert config.hidden_apple_reminders_list_ids == ["list-2"]
+
+
+def test_run_config_editor_returns_to_menu_after_saving(monkeypatch, tmp_path) -> None:
+	config_path = tmp_path / "config.json"
+	menu_results = iter(["reminders_lists", shop_script.EXIT_CONFIG_CHOICE])
+	menu_count = 0
+
+	def fake_select(*args, **kwargs):
+		nonlocal menu_count
+		menu_count += 1
+		return FakePrompt(next(menu_results))
+
+	def fake_edit_reminders_list_visibility(config, prompt_style=None):
+		return Config(hidden_apple_reminders_list_ids=["list-1"])
+
+	monkeypatch.setattr(shop_script.questionary, "select", fake_select)
+	monkeypatch.setattr(shop_script, "edit_reminders_list_visibility", fake_edit_reminders_list_visibility)
+
+	assert shop_script.run_config_editor(config_path, Config()) == 0
+	assert menu_count == 2
+
+
+def test_exit_config_choice_uses_plain_exit_label() -> None:
+	choice = shop_script.exit_config_choice()
+
+	assert choice.title == "Exit Config Menu"
+	assert choice.value == shop_script.EXIT_CONFIG_CHOICE
+
+
+def test_format_omitted_list_instruction_pluralizes_lists() -> None:
+	assert shop_script.format_omitted_list_instruction(0) == shop_script.SELECT_INSTRUCTION
+	assert shop_script.format_omitted_list_instruction(1) == "1 list omitted per config.json"
+	assert shop_script.format_omitted_list_instruction(2) == "2 lists omitted per config.json"
 
 
 def test_render_delivery_result_shows_dry_run_summary() -> None:

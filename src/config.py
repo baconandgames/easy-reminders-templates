@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -16,6 +16,7 @@ class Config:
 	delivery_mode: str = "dry_run"
 	apple_reminders_list_id: str = ""
 	apple_reminders_list_name: str = "Groceries"
+	hidden_apple_reminders_list_ids: list[str] = field(default_factory=list)
 	append_short_name: bool = True
 	include_on_hand_default: bool = False
 	standard_text_color: str = "default"
@@ -51,6 +52,11 @@ def load_config(path: Path) -> Config:
 		"apple_reminders_list_name",
 		Config.apple_reminders_list_name,
 	)
+	hidden_apple_reminders_list_ids: list[str] = _read_string_list(
+		raw_data,
+		"hidden_apple_reminders_list_ids",
+		[],
+	)
 	append_short_name: bool = _read_bool(raw_data, "append_short_name", Config.append_short_name)
 	include_on_hand_default: bool = _read_bool(raw_data, "include_on_hand_default", Config.include_on_hand_default)
 	standard_text_color: str = _read_color(raw_data, "standard_text_color", Config.standard_text_color)
@@ -66,12 +72,29 @@ def load_config(path: Path) -> Config:
 		delivery_mode=delivery_mode,
 		apple_reminders_list_id=apple_reminders_list_id,
 		apple_reminders_list_name=apple_reminders_list_name,
+		hidden_apple_reminders_list_ids=hidden_apple_reminders_list_ids,
 		append_short_name=append_short_name,
 		include_on_hand_default=include_on_hand_default,
 		standard_text_color=standard_text_color,
 		quantity_color=quantity_color,
 		omitted_ingredient_color=omitted_ingredient_color,
 	)
+
+
+def save_config(path: Path, config: Config) -> None:
+	data: dict[str, Any] = {
+		"target_app": config.target_app,
+		"delivery_mode": config.delivery_mode,
+		"apple_reminders_list_id": config.apple_reminders_list_id,
+		"apple_reminders_list_name": config.apple_reminders_list_name,
+		"hidden_apple_reminders_list_ids": config.hidden_apple_reminders_list_ids,
+		"append_short_name": config.append_short_name,
+		"include_on_hand_default": config.include_on_hand_default,
+		"standard_text_color": config.standard_text_color,
+		"quantity_color": config.quantity_color,
+		"omitted_ingredient_color": config.omitted_ingredient_color,
+	}
+	path.write_text(f"{json.dumps(data, indent=2)}\n", encoding="utf-8")
 
 
 def _read_bool(raw_data: dict[str, Any], key: str, default: bool) -> bool:
@@ -97,6 +120,18 @@ def _read_optional_string(raw_data: dict[str, Any], key: str, default: str) -> s
 	value: Any = raw_data.get(key, default)
 	if not isinstance(value, str):
 		raise ConfigLoadError(f'Config value "{key}" must be a string.')
+
+	return value
+
+
+def _read_string_list(raw_data: dict[str, Any], key: str, default: list[str]) -> list[str]:
+	value: Any = raw_data.get(key, default)
+	if not isinstance(value, list):
+		raise ConfigLoadError(f'Config value "{key}" must be an array of strings.')
+
+	for item in value:
+		if not isinstance(item, str):
+			raise ConfigLoadError(f'Config value "{key}" must be an array of strings.')
 
 	return value
 

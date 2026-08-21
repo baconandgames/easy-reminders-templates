@@ -79,6 +79,7 @@ text editor.
   "delivery_mode": "dry_run",
   "apple_reminders_list_id": "",
   "apple_reminders_list_name": "Groceries",
+  "hidden_apple_reminders_list_ids": [],
   "append_short_name": true,
   "include_on_hand_default": false,
   "standard_text_color": "default",
@@ -112,8 +113,12 @@ Supported delivery modes:
 - `create`: create reminders in the configured Apple Reminders list
 
 Apple Reminders lists can be targeted by `apple_reminders_list_name`, including
-lists inside Reminders folders. If multiple lists share that name, `shop` will
-prompt you to choose one and show a few existing items from each list.
+lists inside Reminders folders. `shop` prompts you to choose from available
+lists, starts on the configured list name, and shows a few existing items only
+when multiple lists share the same name.
 
 When `apple_reminders_list_id` is set, it is preferred over
 `apple_reminders_list_name`.
+
+Run `shop config` to choose which Apple Reminders lists appear in the target
+list picker. Hidden lists are stored in `hidden_apple_reminders_list_ids`.

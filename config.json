@@ -3,6 +3,17 @@
   "delivery_mode": "create",
   "apple_reminders_list_id": "",
   "apple_reminders_list_name": "Test",
+  "hidden_apple_reminders_list_ids": [
+    "3D2F7F7F-0438-4AE0-8D2A-1B23F59F1C5B",
+    "7BB86A14-DD80-4E18-B5F8-336BA1E66453",
+    "E047D1C0-42EF-4F50-81CF-AA864C7F5E21",
+    "768D5BE2-0E14-46A4-AF02-08239D9B80CC",
+    "5DD8A8E6-CEB2-470D-94D8-A69DC3003861",
+    "BCCE78F6-4A52-4469-9561-D6AA38525056",
+    "E59CD6D6-0CCF-4EDF-9C19-DD9F8E30C484",
+    "7BD2EF3E-028E-46FF-847A-3C511E19103C",
+    "2262A88A-A688-4B7E-910F-8BFAA0144E02"
+  ],
   "append_short_name": true,
   "include_on_hand_default": false,
   "standard_text_color": "default",

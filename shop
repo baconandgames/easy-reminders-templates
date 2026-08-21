@@ -22,8 +22,8 @@ except ModuleNotFoundError:
 		"Error: missing dependency questionary. Run: python3 -m venv .venv && .venv/bin/python -m pip install -r requirements.txt"
 	)
 
-from src.config import Config, ConfigLoadError, load_config
-from src.delivery import DeliveryError, DeliveryResult, DeliveryTargetOption, get_delivery_target
+from src.config import Config, ConfigLoadError, load_config, save_config
+from src.delivery import AppleRemindersTarget, DeliveryError, DeliveryResult, DeliveryTargetOption, get_delivery_target
 from src.formatter import (
 	ColorScheme,
 	ShoppingList,
@@ -40,9 +40,12 @@ from src.recipes import RecipeLoadError, find_recipe_by_short_name, load_recipes
 ABORT_COMMANDS: set[str] = {"q", "quit", "cancel", "abort"}
 ABORT_CHOICE: str = "__abort__"
 ABORT_TITLE: str = "[!] ABORT"
+EXIT_CONFIG_CHOICE: str = "__exit_config__"
+EXIT_CONFIG_TITLE: str = "Exit Config Menu"
 START_INSTRUCTION: str = "[↑↓ + ENTER to select | Ctrl-C to abort]"
 SELECT_INSTRUCTION: str = " "
 INGREDIENT_INSTRUCTION: str = "\n[SPACE to include/exclude ingredients | ENTER to continue | Ctrl-C to abort]\n"
+CONFIG_LIST_INSTRUCTION: str = "\n[SPACE to show/hide lists | ENTER to save | Ctrl-C to abort]\n"
 TRUNCATED_SAMPLE_LENGTH: int = 11
 PROMPT_COLORS: dict[str, str] = {
 	"default": "",
@@ -161,6 +164,16 @@ def main() -> int:
 		print(f"Error: {error}", file=sys.stderr)
 		return 1
 
+	if args.short_name == "config":
+		try:
+			return run_config_editor(project_dir / "config.json", config, prompt_style=build_prompt_style(config.quantity_color))
+		except ShopAbort:
+			print("Aborted.")
+			return 130
+		except DeliveryError as error:
+			print(f"Error: {error}", file=sys.stderr)
+			return 1
+
 	try:
 		recipes: dict[str, dict[str, Any]] = load_recipes(project_dir / "recipes.json")
 	except RecipeLoadError as error:
@@ -225,9 +238,10 @@ def main() -> int:
 	try:
 		delivery_result: DeliveryResult = get_delivery_target(
 			config.target_app,
-			target_selector=lambda target_name, options: select_delivery_target(
+			target_selector=lambda target_name, options, omitted_count: select_delivery_target(
 				target_name,
 				options,
+				omitted_count,
 				prompt_style=build_prompt_style(config.quantity_color),
 			),
 		).create_list(shopping_list, config)
@@ -279,6 +293,71 @@ def select_recipe(recipes: dict[str, dict[str, Any]], prompt_style=None) -> dict
 	return require_selection(ask_or_abort(selection))
 
 
+def run_config_editor(config_path: Path, config: Config, prompt_style=None) -> int:
+	while True:
+		print()
+		selection = questionary.select(
+			"",
+			choices=[
+				questionary.Choice(title="Reminders Lists", value="reminders_lists"),
+				questionary.Choice(title="Colors", value="colors"),
+				questionary.Choice(title="Defaults", value="defaults"),
+				exit_config_choice(),
+			],
+			instruction=SELECT_INSTRUCTION,
+			pointer=">",
+			qmark="Config",
+			style=prompt_style,
+		)
+		action = require_config_selection(ask_or_abort(selection))
+		if action == EXIT_CONFIG_CHOICE:
+			return 0
+
+		if action == "reminders_lists":
+			config = edit_reminders_list_visibility(config, prompt_style=prompt_style)
+			save_config(config_path, config)
+			print()
+			print("Saved config.json")
+			continue
+
+		print()
+		print("Not implemented yet.")
+
+
+def edit_reminders_list_visibility(config: Config, prompt_style=None) -> Config:
+	targets: list[DeliveryTargetOption] = AppleRemindersTarget().list_targets()
+	hidden_ids: set[str] = set(config.hidden_apple_reminders_list_ids)
+	name_counts: Counter[str] = Counter(target.name for target in targets)
+	choices: list[questionary.Choice] = [
+		questionary.Choice(
+			title=format_delivery_target_option(target, show_detail=name_counts[target.name] > 1),
+			value=target.identifier,
+			checked=target.identifier not in hidden_ids,
+		)
+		for target in targets
+	]
+	if len(choices) == 0:
+		raise DeliveryError("No Apple Reminders lists were found.")
+
+	selection = questionary.checkbox(
+		"",
+		choices=choices,
+		instruction=CONFIG_LIST_INSTRUCTION,
+		pointer=">",
+		qmark="Visible Reminder Lists",
+		style=prompt_style,
+	)
+	visible_ids: set[str] = set(require_selection(ask_or_abort(selection)))
+	return replace(
+		config,
+		hidden_apple_reminders_list_ids=[
+			target.identifier
+			for target in targets
+			if target.identifier not in visible_ids
+		],
+	)
+
+
 def prompt_for_batch_size(recipe: dict[str, Any], prompt_style=None) -> float:
 	default_batch: float = float(recipe["default_batch"])
 	default_display: str = format_number(default_batch)
@@ -316,6 +395,7 @@ def prompt_for_include_on_hand(default: bool, prompt_style=None) -> bool:
 def select_delivery_target(
 	target_name: str,
 	options: list[DeliveryTargetOption],
+	omitted_count: int = 0,
 	prompt_style=None,
 ) -> DeliveryTargetOption:
 	print()
@@ -336,7 +416,7 @@ def select_delivery_target(
 		"",
 		choices=choices,
 		default=default_choice,
-		instruction=SELECT_INSTRUCTION,
+		instruction=format_omitted_list_instruction(omitted_count),
 		pointer=">",
 		qmark="Choose Reminder List",
 		style=prompt_style,
@@ -436,8 +516,20 @@ def truncate_sample_item(item: str) -> str:
 	return f"{item[:TRUNCATED_SAMPLE_LENGTH]}..."
 
 
+def format_omitted_list_instruction(omitted_count: int) -> str:
+	if omitted_count == 0:
+		return SELECT_INSTRUCTION
+
+	list_label: str = "list" if omitted_count == 1 else "lists"
+	return f"{omitted_count} {list_label} omitted per config.json"
+
+
 def abort_choice():
 	return questionary.Choice(title=[("class:abort", ABORT_TITLE)], value=ABORT_CHOICE)
+
+
+def exit_config_choice():
+	return questionary.Choice(title=EXIT_CONFIG_TITLE, value=EXIT_CONFIG_CHOICE)
 
 
 def style_instruction(value: str) -> str:
@@ -482,6 +574,13 @@ def build_prompt_style(color_name: str):
 
 def require_selection(selection):
 	if selection is None or selection == ABORT_CHOICE:
+		raise ShopAbort()
+
+	return selection
+
+
+def require_config_selection(selection):
+	if selection is None:
 		raise ShopAbort()
 
 	return selection

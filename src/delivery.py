@@ -9,6 +9,8 @@ from typing import Callable, Protocol
 from src.config import Config
 from src.formatter import ShoppingList, format_delivery_item
 
+TargetSelector = Callable[[str, list["DeliveryTargetOption"], int], "DeliveryTargetOption"]
+
 
 @dataclass(frozen=True)
 class DeliveryResult:
@@ -44,7 +46,7 @@ class AppleRemindersTarget:
 	def __init__(
 		self,
 		runner=subprocess.run,
-		target_selector: Callable[[str, list[DeliveryTargetOption]], DeliveryTargetOption] | None = None,
+		target_selector: TargetSelector | None = None,
 	) -> None:
 		self._runner = runner
 		self._target_selector = target_selector
@@ -98,22 +100,26 @@ class AppleRemindersTarget:
 
 	def _resolve_list_target(self, config: Config) -> DeliveryTargetOption:
 		targets: list[DeliveryTargetOption] = self.list_targets()
+		visible_targets: list[DeliveryTargetOption] = [
+			target for target in targets if target.identifier not in config.hidden_apple_reminders_list_ids
+		]
+		omitted_count: int = len(targets) - len(visible_targets)
 
-		if len(targets) == 0:
+		if len(visible_targets) == 0:
 			raise DeliveryError("No Apple Reminders lists were found.")
 
 		if self._target_selector is not None:
-			return self._target_selector(config.apple_reminders_list_name, targets)
+			return self._target_selector(config.apple_reminders_list_name, visible_targets, omitted_count)
 
 		if config.apple_reminders_list_id:
-			for target in targets:
+			for target in visible_targets:
 				if target.identifier == config.apple_reminders_list_id:
 					return target
 
 			raise DeliveryError(f"Reminder list not found: {config.apple_reminders_list_id}")
 
 		matches: list[DeliveryTargetOption] = [
-			target for target in targets if target.name == config.apple_reminders_list_name
+			target for target in visible_targets if target.name == config.apple_reminders_list_name
 		]
 
 		if len(matches) == 0:
@@ -148,7 +154,7 @@ class AppleRemindersTarget:
 
 def get_delivery_target(
 	target_app: str,
-	target_selector: Callable[[str, list[DeliveryTargetOption]], DeliveryTargetOption] | None = None,
+	target_selector: TargetSelector | None = None,
 ) -> DeliveryTarget:
 	if target_app == AppleRemindersTarget.target_app:
 		return AppleRemindersTarget(target_selector=target_selector)

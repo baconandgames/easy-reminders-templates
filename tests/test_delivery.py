@@ -187,9 +187,10 @@ def test_apple_reminders_target_uses_selector_for_duplicate_list_names() -> None
 			)
 		return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
 
-	def selector(target_name: str, options: list[DeliveryTargetOption]) -> DeliveryTargetOption:
+	def selector(target_name: str, options: list[DeliveryTargetOption], omitted_count: int) -> DeliveryTargetOption:
 		assert target_name == "Test"
 		assert len(options) == 3
+		assert omitted_count == 0
 		return options[2]
 
 	recipe = {
@@ -210,6 +211,55 @@ def test_apple_reminders_target_uses_selector_for_duplicate_list_names() -> None
 	)
 
 	assert json.loads(calls[1]["input"])["listIdentifier"] == "list-3"
+
+
+def test_apple_reminders_target_hides_configured_list_ids_from_selector() -> None:
+	calls = []
+
+	def fake_runner(args, input, check, capture_output, text):
+		calls.append({"args": args, "input": input})
+		if args[2] == "list-targets":
+			return subprocess.CompletedProcess(
+				args,
+				0,
+				stdout=json.dumps(
+					[
+						{"id": "list-1", "name": "Test", "source": "iCloud", "item_count": 1, "sample_items": ["Bacon"]},
+						{"id": "list-2", "name": "Archive", "source": "iCloud", "item_count": 0, "sample_items": []},
+					]
+				),
+				stderr="",
+			)
+		return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
+
+	def selector(target_name: str, options: list[DeliveryTargetOption], omitted_count: int) -> DeliveryTargetOption:
+		assert target_name == "Test"
+		assert [option.name for option in options] == ["Test"]
+		assert omitted_count == 1
+		return options[0]
+
+	recipe = {
+		"name": "Test Recipe",
+		"ingredients": [
+			{
+				"name": "Apple",
+				"quantity": 1,
+				"always_on_hand": False,
+			},
+		],
+	}
+	shopping_list = build_shopping_list(recipe, 1, include_on_hand=False)
+
+	AppleRemindersTarget(runner=fake_runner, target_selector=selector).create_list(
+		shopping_list,
+		Config(
+			delivery_mode="create",
+			apple_reminders_list_name="Test",
+			hidden_apple_reminders_list_ids=["list-2"],
+		),
+	)
+
+	assert json.loads(calls[1]["input"])["listIdentifier"] == "list-1"
 
 
 def test_apple_reminders_target_raises_when_duplicate_names_have_no_selector() -> None:
