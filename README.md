@@ -65,6 +65,7 @@ text editor.
 ```json
 {
   "target_app": "apple_reminders",
+  "delivery_mode": "dry_run",
   "apple_reminders_list_name": "Groceries",
   "append_short_name": true,
   "include_on_hand_default": false,
@@ -93,5 +94,7 @@ Supported target app values:
 
 - `apple_reminders`
 
-Delivery support is currently a dry-run adapter boundary. Real Apple Reminders
-creation has not been enabled yet.
+Supported delivery modes:
+
+- `dry_run`: print what would be created without changing the target app
+- `create`: create reminders in the configured Apple Reminders list

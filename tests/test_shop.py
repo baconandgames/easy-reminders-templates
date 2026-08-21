@@ -31,7 +31,6 @@ def test_render_delivery_result_shows_dry_run_summary() -> None:
 	result = DeliveryResult(
 		target_app="apple_reminders",
 		target_name="Apple Reminders: Groceries",
-		created_parent="Classic Chili",
 		created_items=["5 lb Ground turkey", "9 cans Beans"],
 		omitted_items=["3 tsp Salt"],
 		dry_run=True,
@@ -39,7 +38,6 @@ def test_render_delivery_result_shows_dry_run_summary() -> None:
 
 	assert shop_script.render_delivery_result(result) == (
 		"Dry run: Apple Reminders: Groceries\n"
-		"Parent: Classic Chili\n"
 		"Included: 2 items\n"
 		"Omitted: 1 item"
 	)

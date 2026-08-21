@@ -7,11 +7,13 @@ from typing import Any
 
 
 SUPPORTED_TARGET_APPS: set[str] = {"apple_reminders"}
+SUPPORTED_DELIVERY_MODES: set[str] = {"dry_run", "create"}
 
 
 @dataclass(frozen=True)
 class Config:
 	target_app: str = "apple_reminders"
+	delivery_mode: str = "dry_run"
 	apple_reminders_list_name: str = "Groceries"
 	append_short_name: bool = True
 	include_on_hand_default: bool = False
@@ -37,6 +39,7 @@ def load_config(path: Path) -> Config:
 		raise ConfigLoadError("Config file must contain a JSON object.")
 
 	target_app: str = _read_target_app(raw_data, "target_app", Config.target_app)
+	delivery_mode: str = _read_delivery_mode(raw_data, "delivery_mode", Config.delivery_mode)
 	apple_reminders_list_name: str = _read_string(
 		raw_data,
 		"apple_reminders_list_name",
@@ -54,6 +57,7 @@ def load_config(path: Path) -> Config:
 
 	return Config(
 		target_app=target_app,
+		delivery_mode=delivery_mode,
 		apple_reminders_list_name=apple_reminders_list_name,
 		append_short_name=append_short_name,
 		include_on_hand_default=include_on_hand_default,
@@ -86,6 +90,14 @@ def _read_target_app(raw_data: dict[str, Any], key: str, default: str) -> str:
 	value: str = _read_string(raw_data, key, default)
 	if value not in SUPPORTED_TARGET_APPS:
 		raise ConfigLoadError(f'Config value "{key}" has unsupported target "{value}".')
+
+	return value
+
+
+def _read_delivery_mode(raw_data: dict[str, Any], key: str, default: str) -> str:
+	value: str = _read_string(raw_data, key, default)
+	if value not in SUPPORTED_DELIVERY_MODES:
+		raise ConfigLoadError(f'Config value "{key}" has unsupported mode "{value}".')
 
 	return value
 

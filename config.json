@@ -1,5 +1,6 @@
 {
   "target_app": "apple_reminders",
+  "delivery_mode": "dry_run",
   "apple_reminders_list_name": "Groceries",
   "append_short_name": true,
   "include_on_hand_default": false,

@@ -11,6 +11,7 @@ def test_load_config_uses_defaults_when_file_is_missing() -> None:
 		config = load_config(Path(directory) / "missing.json")
 
 	assert config.target_app == "apple_reminders"
+	assert config.delivery_mode == "dry_run"
 	assert config.apple_reminders_list_name == "Groceries"
 	assert config.append_short_name is True
 	assert config.include_on_hand_default is False
@@ -23,13 +24,14 @@ def test_load_config_reads_values() -> None:
 	with TemporaryDirectory() as directory:
 		path: Path = Path(directory) / "config.json"
 		path.write_text(
-			'{"target_app": "apple_reminders", "apple_reminders_list_name": "Shared Grocery", "append_short_name": false, "include_on_hand_default": true, "standard_text_color": "white", "quantity_color": "cyan", "omitted_ingredient_color": "grey"}',
+			'{"target_app": "apple_reminders", "delivery_mode": "create", "apple_reminders_list_name": "Shared Grocery", "append_short_name": false, "include_on_hand_default": true, "standard_text_color": "white", "quantity_color": "cyan", "omitted_ingredient_color": "grey"}',
 			encoding="utf-8",
 		)
 
 		config = load_config(path)
 
 	assert config.target_app == "apple_reminders"
+	assert config.delivery_mode == "create"
 	assert config.apple_reminders_list_name == "Shared Grocery"
 	assert config.append_short_name is False
 	assert config.include_on_hand_default is True
@@ -86,5 +88,18 @@ def test_load_config_rejects_empty_reminders_list_names() -> None:
 			load_config(path)
 		except ConfigLoadError as error:
 			assert 'Config value "apple_reminders_list_name" must not be empty.' == str(error)
+		else:
+			raise AssertionError("Expected ConfigLoadError")
+
+
+def test_load_config_rejects_invalid_delivery_modes() -> None:
+	with TemporaryDirectory() as directory:
+		path: Path = Path(directory) / "config.json"
+		path.write_text('{"delivery_mode": "send"}', encoding="utf-8")
+
+		try:
+			load_config(path)
+		except ConfigLoadError as error:
+			assert 'Config value "delivery_mode" has unsupported mode "send".' == str(error)
 		else:
 			raise AssertionError("Expected ConfigLoadError")
