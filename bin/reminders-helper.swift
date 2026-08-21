@@ -33,18 +33,10 @@ func requestReminderAccess(_ store: EKEventStore) {
 	var grantedAccess = false
 	var accessError: Error?
 
-	if #available(macOS 14.0, *) {
-		store.requestFullAccessToReminders { granted, error in
-			grantedAccess = granted
-			accessError = error
-			semaphore.signal()
-		}
-	} else {
-		store.requestAccess(to: .reminder) { granted, error in
-			grantedAccess = granted
-			accessError = error
-			semaphore.signal()
-		}
+	store.requestAccess(to: .reminder) { granted, error in
+		grantedAccess = granted
+		accessError = error
+		semaphore.signal()
 	}
 
 	semaphore.wait()
