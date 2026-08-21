@@ -125,6 +125,11 @@ install path has been tested on a clean Mac.
 
 Add update awareness to `shop config`, not to the normal `shop` flow.
 
+For `pipx upgrade easy-reminder-templates` to pick up changes from GitHub, the
+package version in `pyproject.toml` must increase. Until a release process is
+formalized, bump the version for any pushed change that testers should receive
+through `pipx upgrade`.
+
 Planned behavior:
 
 - On opening `shop config`, quietly check GitHub releases or tags.

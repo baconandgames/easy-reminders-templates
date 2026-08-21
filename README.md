@@ -40,6 +40,14 @@ Check that `pipx` is available:
 pipx --version
 ```
 
+On older Macs, Homebrew may need to build Python from source. If that is slow or
+fails, install Python 3.11 first and tell `pipx` to use it:
+
+```sh
+brew install python@3.11
+pipx install --python /usr/local/bin/python3.11 git+https://github.com/baconandgames/easy-reminders-templates.git
+```
+
 ### 3. Install Easy Reminder Templates
 
 ```sh
@@ -50,6 +58,12 @@ Check that `shop` is available:
 
 ```sh
 shop --help
+```
+
+To update an existing install:
+
+```sh
+pipx upgrade easy-reminder-templates
 ```
 
 ## First Run
