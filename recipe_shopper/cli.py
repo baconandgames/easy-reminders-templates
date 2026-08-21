@@ -110,6 +110,10 @@ class ShopAbort(Exception):
 	pass
 
 
+class ConfigExit(Exception):
+	pass
+
+
 @dataclass(frozen=True)
 class UpdateStatus:
 	current_version: str
@@ -230,6 +234,8 @@ def main() -> int:
 	if args.short_name == "config":
 		try:
 			return run_config_editor(config_path, config, prompt_style=build_prompt_style(config.selection_color))
+		except ConfigExit:
+			return 0
 		except ShopAbort:
 			print("Aborted.")
 			return 130
@@ -599,7 +605,7 @@ def handle_update_check(
 	if action == "show_command":
 		print()
 		print(format_update_command_message(copy_update_command_to_clipboard()))
-		return config
+		raise ConfigExit()
 
 	config = replace(config, skipped_update_version=release.version)
 	save_config(config_path, config)
@@ -635,9 +641,9 @@ def format_update_command_message(copied_to_clipboard: bool) -> str:
 	]
 	if copied_to_clipboard:
 		lines.append("The update command has been copied to your clipboard.")
-		lines.append("Exit listkit, paste it into Terminal, and press Enter.")
+		lines.append("listkit will exit now. Paste the command into Terminal, and press Enter.")
 	else:
-		lines.append("Exit listkit, paste or type this command into Terminal, and press Enter.")
+		lines.append("listkit will exit now. Paste or type this command into Terminal, and press Enter.")
 
 	return "\n".join(lines)
 

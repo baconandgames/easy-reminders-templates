@@ -599,13 +599,34 @@ def test_handle_update_check_labels_update_action(monkeypatch, tmp_path) -> None
 	assert captured["choices"][1].title == "Skip v0.1.8"
 
 
+def test_handle_update_check_exits_after_copying_update_command(monkeypatch, tmp_path) -> None:
+	config_path = tmp_path / "config.json"
+	release = shop_script.ReleaseInfo(
+		version="0.1.8",
+		name="Beta polish",
+		body="Release notes",
+		url="https://github.com/example/release",
+	)
+	update_status = shop_script.UpdateStatus(current_version="0.1.7", latest_release=release)
+
+	monkeypatch.setattr(shop_script.questionary, "select", lambda *args, **kwargs: FakePrompt("show_command"))
+	monkeypatch.setattr(shop_script, "copy_update_command_to_clipboard", lambda: True)
+
+	try:
+		shop_script.handle_update_check(config_path, Config(), update_status)
+	except shop_script.ConfigExit:
+		pass
+	else:
+		raise AssertionError("Expected ConfigExit")
+
+
 def test_format_update_command_message_notes_clipboard_copy() -> None:
 	assert shop_script.format_update_command_message(copied_to_clipboard=True) == (
 		"Update command:\n"
 		"pipx upgrade easy-reminder-templates\n"
 		"\n"
 		"The update command has been copied to your clipboard.\n"
-		"Exit listkit, paste it into Terminal, and press Enter."
+		"listkit will exit now. Paste the command into Terminal, and press Enter."
 	)
 
 
@@ -614,7 +635,7 @@ def test_format_update_command_message_falls_back_without_clipboard() -> None:
 		"Update command:\n"
 		"pipx upgrade easy-reminder-templates\n"
 		"\n"
-		"Exit listkit, paste or type this command into Terminal, and press Enter."
+		"listkit will exit now. Paste or type this command into Terminal, and press Enter."
 	)
 
 
