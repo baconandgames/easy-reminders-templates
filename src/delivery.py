@@ -52,14 +52,15 @@ class AppleRemindersTarget:
 	def create_list(self, shopping_list: ShoppingList, config: Config) -> DeliveryResult:
 		created_items: list[str] = [format_delivery_item(item) for item in shopping_list.included_items]
 		omitted_items: list[str] = [format_delivery_item(item) for item in shopping_list.omitted_items]
+		selected_target: DeliveryTargetOption | None = None
 
 		if config.delivery_mode == "create":
-			list_identifier: str | None = config.apple_reminders_list_id or self._resolve_list_identifier(config)
-			self._run_helper(config, created_items, list_identifier)
+			selected_target = self._resolve_list_target(config)
+			self._run_helper(config, created_items, selected_target.identifier)
 
 		return DeliveryResult(
 			target_app=self.target_app,
-			target_name=f"{self.target_name}: {config.apple_reminders_list_name}",
+			target_name=f"{self.target_name}: {selected_target.name if selected_target else config.apple_reminders_list_name}",
 			created_items=created_items,
 			omitted_items=omitted_items,
 			dry_run=config.delivery_mode == "dry_run",
@@ -95,21 +96,33 @@ class AppleRemindersTarget:
 			for target in targets
 		]
 
-	def _resolve_list_identifier(self, config: Config) -> str:
+	def _resolve_list_target(self, config: Config) -> DeliveryTargetOption:
+		targets: list[DeliveryTargetOption] = self.list_targets()
+
+		if len(targets) == 0:
+			raise DeliveryError("No Apple Reminders lists were found.")
+
+		if self._target_selector is not None:
+			return self._target_selector(config.apple_reminders_list_name, targets)
+
+		if config.apple_reminders_list_id:
+			for target in targets:
+				if target.identifier == config.apple_reminders_list_id:
+					return target
+
+			raise DeliveryError(f"Reminder list not found: {config.apple_reminders_list_id}")
+
 		matches: list[DeliveryTargetOption] = [
-			target for target in self.list_targets() if target.name == config.apple_reminders_list_name
+			target for target in targets if target.name == config.apple_reminders_list_name
 		]
 
 		if len(matches) == 0:
 			raise DeliveryError(f"Reminder list not found: {config.apple_reminders_list_name}")
 
 		if len(matches) == 1:
-			return matches[0].identifier
+			return matches[0]
 
-		if self._target_selector is None:
-			raise DeliveryError(f'Multiple reminder lists named "{config.apple_reminders_list_name}" were found.')
-
-		return self._target_selector(config.apple_reminders_list_name, matches).identifier
+		raise DeliveryError(f'Multiple reminder lists named "{config.apple_reminders_list_name}" were found.')
 
 	def _run_helper(self, config: Config, created_items: list[str], list_identifier: str | None) -> None:
 		helper_path: Path = Path(__file__).resolve().parents[1] / "bin" / "reminders-helper.swift"

@@ -203,6 +203,53 @@ def test_checked_active_checkbox_row_uses_highlighted_style() -> None:
 	assert ("class:selected", "Salt") not in tokens
 
 
+def test_abort_choice_uses_red_attention_label() -> None:
+	choice = shop_script.abort_choice()
+
+	assert choice.title == [("class:abort", "[!] ABORT")]
+	assert choice.value == shop_script.ABORT_CHOICE
+
+
+def test_select_delivery_target_defaults_to_configured_list_and_details_duplicates(monkeypatch) -> None:
+	options = [
+		DeliveryTargetOption(
+			identifier="list-1",
+			name="General",
+			source="iCloud",
+			item_count=1,
+			sample_items=["TP"],
+		),
+		DeliveryTargetOption(
+			identifier="list-2",
+			name="Test",
+			source="iCloud",
+			item_count=6,
+			sample_items=["Bacon"],
+		),
+		DeliveryTargetOption(
+			identifier="list-3",
+			name="Test",
+			source="Local",
+			item_count=0,
+			sample_items=[],
+		),
+	]
+	captured = {}
+
+	def fake_select(*args, **kwargs):
+		captured["choices"] = kwargs["choices"]
+		captured["default"] = kwargs["default"]
+		return FakePrompt(options[1])
+
+	monkeypatch.setattr(shop_script.questionary, "select", fake_select)
+
+	assert shop_script.select_delivery_target("Test", options) == options[1]
+	assert captured["choices"][0].title == "General (1)"
+	assert captured["choices"][1].title == "Test (6) - Bacon"
+	assert captured["choices"][2].title == "Test (0)"
+	assert captured["default"] == captured["choices"][1]
+
+
 def test_render_delivery_result_shows_dry_run_summary() -> None:
 	result = DeliveryResult(
 		target_app="apple_reminders",

@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+from collections import Counter
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
@@ -38,6 +39,7 @@ from src.recipes import RecipeLoadError, find_recipe_by_short_name, load_recipes
 
 ABORT_COMMANDS: set[str] = {"q", "quit", "cancel", "abort"}
 ABORT_CHOICE: str = "__abort__"
+ABORT_TITLE: str = "[!] ABORT"
 START_INSTRUCTION: str = "[↑↓ + ENTER to select | Ctrl-C to abort]"
 SELECT_INSTRUCTION: str = " "
 INGREDIENT_INSTRUCTION: str = "\n[SPACE to include/exclude ingredients | ENTER to continue | Ctrl-C to abort]\n"
@@ -264,7 +266,7 @@ def select_recipe(recipes: dict[str, dict[str, Any]], prompt_style=None) -> dict
 		)
 		for recipe in recipe_options
 	]
-	choices.append(questionary.Choice(title="Abort", value=ABORT_CHOICE))
+	choices.append(abort_choice())
 
 	selection = questionary.select(
 		"",
@@ -299,7 +301,7 @@ def prompt_for_batch_size(recipe: dict[str, Any], prompt_style=None) -> float:
 def prompt_for_include_on_hand(default: bool, prompt_style=None) -> bool:
 	default_choice = questionary.Choice(title="Yes", value=True) if default else questionary.Choice(title="No", value=False)
 	other_choice = questionary.Choice(title="No", value=False) if default else questionary.Choice(title="Yes", value=True)
-	choices: list[questionary.Choice] = [default_choice, other_choice, questionary.Choice(title="Abort", value=ABORT_CHOICE)]
+	choices: list[questionary.Choice] = [default_choice, other_choice, abort_choice()]
 	selection = questionary.select(
 		"",
 		choices=choices,
@@ -317,17 +319,26 @@ def select_delivery_target(
 	prompt_style=None,
 ) -> DeliveryTargetOption:
 	print()
-	choices: list[questionary.Choice] = [
-		questionary.Choice(title=format_delivery_target_option(option), value=option)
-		for option in options
-	]
-	choices.append(questionary.Choice(title="Abort", value=ABORT_CHOICE))
+	name_counts: Counter[str] = Counter(option.name for option in options)
+	choices: list[questionary.Choice] = []
+	default_choice: questionary.Choice | None = None
+	for option in options:
+		choice = questionary.Choice(
+			title=format_delivery_target_option(option, show_detail=name_counts[option.name] > 1),
+			value=option,
+		)
+		choices.append(choice)
+		if default_choice is None and option.name == target_name:
+			default_choice = choice
+
+	choices.append(abort_choice())
 	selection = questionary.select(
 		"",
 		choices=choices,
+		default=default_choice,
 		instruction=SELECT_INSTRUCTION,
 		pointer=">",
-		qmark=f'Choose a "{target_name}" List',
+		qmark="Choose Reminder List",
 		style=prompt_style,
 	)
 	return require_selection(ask_or_abort(selection))
@@ -406,12 +417,16 @@ def order_items_with_on_hand_last(items: list[ShoppingListItem]) -> list[tuple[i
 	return sorted(enumerate(items), key=lambda indexed_item: indexed_item[1].always_on_hand)
 
 
-def format_delivery_target_option(option: DeliveryTargetOption) -> str:
+def format_delivery_target_option(option: DeliveryTargetOption, show_detail: bool = True) -> str:
+	base_label: str = f"{option.name} ({option.item_count})"
+	if not show_detail:
+		return base_label
+
 	if len(option.sample_items) == 0:
-		return f"{option.name} ({option.item_count})"
+		return base_label
 
 	samples: str = ", ".join(truncate_sample_item(item) for item in option.sample_items[:3])
-	return f"{option.name} ({option.item_count}) - {samples}"
+	return f"{base_label} - {samples}"
 
 
 def truncate_sample_item(item: str) -> str:
@@ -419,6 +434,10 @@ def truncate_sample_item(item: str) -> str:
 		return item
 
 	return f"{item[:TRUNCATED_SAMPLE_LENGTH]}..."
+
+
+def abort_choice():
+	return questionary.Choice(title=[("class:abort", ABORT_TITLE)], value=ABORT_CHOICE)
 
 
 def style_instruction(value: str) -> str:
@@ -446,20 +465,19 @@ def validate_batch_size(selection: str) -> bool | str:
 
 def build_prompt_style(color_name: str):
 	color: str = PROMPT_COLORS[color_name]
-	if color == "":
-		return None
+	styles: dict[str, str] = {
+		"abort": "ansired noreverse noinherit",
+		"selected": "ansiyellow noreverse noinherit",
+		"answer": "ansiyellow noinherit",
+		"instruction": "ansibrightblack",
+		"qmark": "bold",
+		"question": "bold",
+	}
+	if color != "":
+		styles["pointer"] = f"{color} noinherit"
+		styles["highlighted"] = f"{color} noreverse noinherit"
 
-	return questionary.Style.from_dict(
-		{
-			"pointer": f"{color} noinherit",
-			"highlighted": f"{color} noreverse noinherit",
-			"selected": "ansiyellow noreverse noinherit",
-			"answer": "ansiyellow noinherit",
-			"instruction": "ansibrightblack",
-			"qmark": "bold",
-			"question": "bold",
-		}
-	)
+	return questionary.Style.from_dict(styles)
 
 
 def require_selection(selection):

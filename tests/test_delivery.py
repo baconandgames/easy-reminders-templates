@@ -108,7 +108,7 @@ def test_apple_reminders_target_runs_script_in_create_mode() -> None:
 	assert calls[1]["text"] is True
 
 
-def test_apple_reminders_target_uses_configured_list_id_without_listing_targets() -> None:
+def test_apple_reminders_target_uses_configured_list_id_after_listing_targets() -> None:
 	calls = []
 
 	def fake_runner(args, input, check, capture_output, text):
@@ -121,6 +121,23 @@ def test_apple_reminders_target_uses_configured_list_id_without_listing_targets(
 				"text": text,
 			}
 		)
+		if args[2] == "list-targets":
+			return subprocess.CompletedProcess(
+				args,
+				0,
+				stdout=json.dumps(
+					[
+						{
+							"id": "list-1",
+							"name": "Shared Grocery",
+							"source": "iCloud",
+							"item_count": 1,
+							"sample_items": ["Milk"],
+						}
+					]
+				),
+				stderr="",
+			)
 		return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
 
 	recipe = {
@@ -144,9 +161,10 @@ def test_apple_reminders_target_uses_configured_list_id_without_listing_targets(
 		),
 	)
 
-	assert len(calls) == 1
-	assert calls[0]["args"][2] == "create-reminders"
-	assert json.loads(calls[0]["input"])["listIdentifier"] == "list-1"
+	assert len(calls) == 2
+	assert calls[0]["args"][2] == "list-targets"
+	assert calls[1]["args"][2] == "create-reminders"
+	assert json.loads(calls[1]["input"])["listIdentifier"] == "list-1"
 
 
 def test_apple_reminders_target_uses_selector_for_duplicate_list_names() -> None:
