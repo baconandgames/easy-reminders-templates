@@ -29,7 +29,7 @@ from src.recipes import RecipeLoadError, find_recipe_by_short_name, load_recipes
 ABORT_COMMANDS: set[str] = {"q", "quit", "cancel", "abort"}
 ABORT_CHOICE: str = "__abort__"
 SELECT_INSTRUCTION: str = "\n [↑↓ + ENTER to select | Ctrl-C to abort]\n"
-TEXT_INSTRUCTION: str = "\n [ENTER for default | q or Ctrl-C to abort]\n"
+TEXT_INSTRUCTION: str = "\n [ENTER to accept | edit value | Ctrl-C to abort]\n"
 TRUNCATED_SAMPLE_LENGTH: int = 11
 PROMPT_COLORS: dict[str, str] = {
 	"default": "",
@@ -73,6 +73,7 @@ def main() -> int:
 
 	try:
 		prompt_style = build_prompt_style(config.quantity_color)
+		print()
 		if args.short_name is None:
 			recipe = select_recipe(recipes, prompt_style=prompt_style)
 		else:
@@ -157,11 +158,11 @@ def select_recipe(recipes: dict[str, dict[str, Any]], prompt_style=None) -> dict
 	choices.append(questionary.Choice(title="Abort", value=ABORT_CHOICE))
 
 	selection = questionary.select(
-		"Select a Recipe",
+		"",
 		choices=choices,
 		instruction=SELECT_INSTRUCTION,
 		pointer=">",
-		qmark="",
+		qmark="Select a Recipe",
 		style=prompt_style,
 	)
 	return require_selection(ask_or_abort(selection))
@@ -171,10 +172,11 @@ def prompt_for_batch_size(recipe: dict[str, Any], prompt_style=None) -> float:
 	default_batch: float = float(recipe["default_batch"])
 	default_display: str = format_number(default_batch)
 	prompt = questionary.text(
-		f"Batch Size [{default_display}]",
+		"",
+		default=default_display,
 		validate=validate_batch_size,
 		instruction=TEXT_INSTRUCTION,
-		qmark="",
+		qmark="Batch Size",
 		style=prompt_style,
 	)
 
@@ -187,18 +189,15 @@ def prompt_for_batch_size(recipe: dict[str, Any], prompt_style=None) -> float:
 
 
 def prompt_for_include_on_hand(default: bool, prompt_style=None) -> bool:
-	choices: list[questionary.Choice] = [
-		questionary.Choice(title="Yes", value=True),
-		questionary.Choice(title="No", value=False),
-		questionary.Choice(title="Abort", value=ABORT_CHOICE),
-	]
+	default_choice = questionary.Choice(title="Yes", value=True) if default else questionary.Choice(title="No", value=False)
+	other_choice = questionary.Choice(title="No", value=False) if default else questionary.Choice(title="Yes", value=True)
+	choices: list[questionary.Choice] = [default_choice, other_choice, questionary.Choice(title="Abort", value=ABORT_CHOICE)]
 	selection = questionary.select(
-		"Include On-Hand Items",
+		"",
 		choices=choices,
-		default=choices[0] if default else choices[1],
 		instruction=SELECT_INSTRUCTION,
 		pointer=">",
-		qmark="",
+		qmark="Include On-Hand Items",
 		style=prompt_style,
 	)
 	return require_selection(ask_or_abort(selection))
@@ -216,11 +215,11 @@ def select_delivery_target(
 	]
 	choices.append(questionary.Choice(title="Abort", value=ABORT_CHOICE))
 	selection = questionary.select(
-		f'Choose a "{target_name}" List',
+		"",
 		choices=choices,
 		instruction=SELECT_INSTRUCTION,
 		pointer=">",
-		qmark="",
+		qmark=f'Choose a "{target_name}" List',
 		style=prompt_style,
 	)
 	return require_selection(ask_or_abort(selection))
@@ -268,10 +267,11 @@ def build_prompt_style(color_name: str):
 	return questionary.Style.from_dict(
 		{
 			"pointer": f"{color} bold",
-			"highlighted": f"{color} bold",
-			"selected": "",
+			"highlighted": f"{color} bold noreverse",
+			"selected": "noreverse",
 			"answer": "",
 			"instruction": "ansibrightblack",
+			"qmark": "bold",
 			"question": "bold",
 		}
 	)
@@ -286,12 +286,9 @@ def require_selection(selection):
 
 def ask_or_abort(prompt):
 	try:
-		selection = prompt.ask()
+		return prompt.ask()
 	except (KeyboardInterrupt, EOFError) as error:
 		raise ShopAbort() from error
-
-	print()
-	return selection
 
 
 if __name__ == "__main__":
