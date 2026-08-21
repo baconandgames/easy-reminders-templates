@@ -31,7 +31,8 @@ Interactive prompts can be cancelled with the `Abort` option, `Ctrl-C`, or `q`
 where text input is accepted.
 
 If on-hand ingredients are omitted, they still appear at the end of the terminal
-output with an `x` marker and the configured omitted-item color.
+flow with checkbox controls so individual omitted items can be added back before
+the list is sent to the target app.
 
 ## Recipes
 

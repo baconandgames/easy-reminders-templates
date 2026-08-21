@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -22,7 +23,16 @@ except ModuleNotFoundError:
 
 from src.config import Config, ConfigLoadError, load_config
 from src.delivery import DeliveryError, DeliveryResult, DeliveryTargetOption, get_delivery_target
-from src.formatter import ColorScheme, build_shopping_list, format_number, render_shopping_list
+from src.formatter import (
+	ColorScheme,
+	ShoppingList,
+	ShoppingListItem,
+	build_shopping_list,
+	format_item,
+	format_item_prefix,
+	format_number,
+	render_shopping_list,
+)
 from src.recipes import RecipeLoadError, find_recipe_by_short_name, load_recipes
 
 
@@ -30,6 +40,7 @@ ABORT_COMMANDS: set[str] = {"q", "quit", "cancel", "abort"}
 ABORT_CHOICE: str = "__abort__"
 START_INSTRUCTION: str = "[↑↓ + ENTER to select | Ctrl-C to abort]"
 SELECT_INSTRUCTION: str = " "
+OMITTED_INSTRUCTION: str = "\n[SPACE to include omitted items | ENTER to continue | Ctrl-C to abort]\n"
 TRUNCATED_SAMPLE_LENGTH: int = 11
 PROMPT_COLORS: dict[str, str] = {
 	"default": "",
@@ -47,6 +58,89 @@ PROMPT_COLORS: dict[str, str] = {
 
 class ShopAbort(Exception):
 	pass
+
+
+def configure_questionary_checkbox_rendering() -> None:
+	common = questionary.prompts.common
+	common.INDICATOR_SELECTED = "[x]"
+	common.INDICATOR_UNSELECTED = "[ ]"
+
+	def get_choice_tokens(self):
+		tokens = []
+
+		def append(index, choice):
+			selected = choice.value in self.selected_options
+			pointed_at = index == self.pointed_at
+
+			if pointed_at:
+				if self.pointer is not None:
+					tokens.append(("class:pointer", f" {self.pointer} "))
+				else:
+					tokens.append(("class:text", " " * 3))
+
+				tokens.append(("[SetCursorPosition]", ""))
+			else:
+				pointer_length = len(self.pointer) if self.pointer is not None else 1
+				tokens.append(("class:text", " " * (2 + pointer_length)))
+
+			if isinstance(choice, common.Separator):
+				tokens.append(("class:separator", f"{choice.title}"))
+			elif choice.disabled:
+				disabled_style = "class:highlighted" if pointed_at else "class:selected" if selected else "class:disabled"
+				if isinstance(choice.title, list):
+					tokens.append((disabled_style, "- "))
+					tokens.extend(choice.title)
+				else:
+					tokens.append((disabled_style, f"- {choice.title}"))
+
+				disabled_text = "" if isinstance(choice.disabled, bool) else f" ({choice.disabled})"
+				tokens.append((disabled_style, disabled_text))
+			else:
+				shortcut = choice.get_shortcut_title() if self.use_shortcuts else ""
+
+				if selected:
+					indicator = f"{common.INDICATOR_SELECTED} " if self.use_indicator else ""
+					indicator_style = "class:highlighted" if pointed_at else "class:selected"
+				else:
+					indicator = f"{common.INDICATOR_UNSELECTED} " if self.use_indicator else ""
+					indicator_style = "class:highlighted" if pointed_at else "class:text"
+
+				tokens.append((indicator_style, indicator))
+
+				if isinstance(choice.title, list):
+					tokens.extend(choice.title)
+				elif pointed_at:
+					tokens.append(("class:highlighted", f"{shortcut}{choice.title}"))
+				elif selected:
+					tokens.append(("class:selected", f"{shortcut}{choice.title}"))
+				else:
+					tokens.append(("class:text", f"{shortcut}{choice.title}"))
+
+			tokens.append(("", "\n"))
+
+		for index, choice in enumerate(self.filtered_choices):
+			append(index, choice)
+
+		current = self.get_pointed_at()
+
+		if self.show_selected:
+			answer = current.get_shortcut_title() if self.use_shortcuts else ""
+			answer += current.title if isinstance(current.title, str) else current.title[0][1]
+			tokens.append(("class:text", f"  Answer: {answer}"))
+
+		show_description = self.show_description and current.description is not None
+		if show_description:
+			tokens.append(("class:text", f"  Description: {current.description}"))
+
+		if not (self.show_selected or show_description):
+			tokens.pop()
+
+		return tokens
+
+	common.InquirerControl._get_choice_tokens = get_choice_tokens
+
+
+configure_questionary_checkbox_rendering()
 
 
 def main() -> int:
@@ -74,7 +168,7 @@ def main() -> int:
 	try:
 		prompt_style = build_prompt_style(config.quantity_color)
 		print()
-		print(START_INSTRUCTION)
+		print(style_instruction(START_INSTRUCTION))
 		print()
 		if args.short_name is None:
 			recipe = select_recipe(recipes, prompt_style=prompt_style)
@@ -113,7 +207,18 @@ def main() -> int:
 		quantity_color=config.quantity_color,
 		omitted_ingredient_color=config.omitted_ingredient_color,
 	)
-	print(render_shopping_list(shopping_list, color_scheme=color_scheme, include_omitted=not include_on_hand))
+	print(render_shopping_list(without_item_tags(shopping_list), color_scheme=color_scheme))
+	try:
+		if len(shopping_list.omitted_items) > 0:
+			selected_omitted_indexes: list[int] = prompt_for_omitted_items(
+				shopping_list,
+				prompt_style=prompt_style,
+			)
+			shopping_list = include_selected_omitted_items(shopping_list, selected_omitted_indexes)
+	except ShopAbort:
+		print("Aborted.")
+		return 130
+
 	try:
 		delivery_result: DeliveryResult = get_delivery_target(
 			config.target_app,
@@ -227,6 +332,68 @@ def select_delivery_target(
 	return require_selection(ask_or_abort(selection))
 
 
+def prompt_for_omitted_items(shopping_list: ShoppingList, prompt_style=None) -> list[int]:
+	prefix_width: int = max((len(format_item_prefix(item)) for item in shopping_list.items), default=0)
+	print()
+	choices: list[questionary.Choice] = [
+		questionary.Choice(
+			title=format_item(replace(item, tag=None), prefix_width),
+			value=index,
+		)
+		for index, item in enumerate(shopping_list.omitted_items)
+	]
+	selection = questionary.checkbox(
+		"",
+		choices=choices,
+		instruction=OMITTED_INSTRUCTION,
+		pointer=">",
+		qmark="To Be Omitted",
+		style=prompt_style,
+	)
+	selection = ask_or_abort(selection)
+	selected_indexes = require_selection(selection)
+	print(f"\033[F\033[KTo Be Omitted  {style_answer(format_added_count(len(selected_indexes)))}")
+	return selected_indexes
+
+
+def without_item_tags(shopping_list: ShoppingList) -> ShoppingList:
+	return ShoppingList(
+		recipe_name=shopping_list.recipe_name,
+		batch_size=shopping_list.batch_size,
+		items=[replace(item, tag=None) for item in shopping_list.items],
+		included_items=[replace(item, tag=None) for item in shopping_list.included_items],
+		omitted_items=[replace(item, tag=None) for item in shopping_list.omitted_items],
+	)
+
+
+def include_selected_omitted_items(
+	shopping_list: ShoppingList,
+	selected_omitted_indexes: list[int],
+) -> ShoppingList:
+	selected_indexes: set[int] = set(selected_omitted_indexes)
+	promoted_items: dict[int, ShoppingListItem] = {
+		id(item): replace(item, omitted=False)
+		for index, item in enumerate(shopping_list.omitted_items)
+		if index in selected_indexes
+	}
+	included_items: list[ShoppingListItem] = shopping_list.included_items + [
+		promoted_items[id(item)]
+		for index, item in enumerate(shopping_list.omitted_items)
+		if index in selected_indexes
+	]
+	omitted_items: list[ShoppingListItem] = [
+		item for index, item in enumerate(shopping_list.omitted_items) if index not in selected_indexes
+	]
+
+	return ShoppingList(
+		recipe_name=shopping_list.recipe_name,
+		batch_size=shopping_list.batch_size,
+		items=[promoted_items.get(id(item), item) for item in shopping_list.items],
+		included_items=included_items,
+		omitted_items=omitted_items,
+	)
+
+
 def format_delivery_target_option(option: DeliveryTargetOption) -> str:
 	if len(option.sample_items) == 0:
 		return f"{option.name} ({option.item_count})"
@@ -240,6 +407,19 @@ def truncate_sample_item(item: str) -> str:
 		return item
 
 	return f"{item[:TRUNCATED_SAMPLE_LENGTH]}..."
+
+
+def style_instruction(value: str) -> str:
+	return f"\033[90m{value}\033[0m"
+
+
+def style_answer(value: str) -> str:
+	return f"\033[33m{value}\033[0m"
+
+
+def format_added_count(count: int) -> str:
+	item_label: str = "item" if count == 1 else "items"
+	return f"{count} {item_label} added"
 
 
 def validate_batch_size(selection: str) -> bool | str:
@@ -270,7 +450,7 @@ def build_prompt_style(color_name: str):
 		{
 			"pointer": f"{color} noinherit",
 			"highlighted": f"{color} noreverse noinherit",
-			"selected": "noreverse",
+			"selected": "ansiyellow noreverse noinherit",
 			"answer": "ansiyellow noinherit",
 			"instruction": "ansibrightblack",
 			"qmark": "bold",
