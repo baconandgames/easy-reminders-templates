@@ -38,6 +38,14 @@ ListKit currently supports two template types:
 Both types use the same basic JSON structure. A `list` template can still include
 quantities later if needed.
 
+The practical difference is whether the template should ask for a batch size:
+
+- Leave `default_batch` blank or omit it for normal checklists, packing lists,
+  store lists, and other templates where each item should be added once.
+- Set `default_batch` to a number for templates that should scale quantities,
+  such as recipes. ListKit will show a batch-size prompt and multiply item
+  quantities by the chosen batch size.
+
 The bundled templates show three different use cases:
 
 - `Classic Chili` (`listkit chili`): recipe scaling with quantities, units, and
@@ -108,12 +116,34 @@ listkit beach
 | `type` | Yes | Template | Must be `"recipe"` or `"list"`. |
 | `name` | Yes | Template | Display name shown in ListKit. |
 | `short_name` | No | Template | Optional command shortcut, such as `chili` for `listkit chili`. |
-| `default_batch` | No | Template | Positive number used as the default batch size. |
+| `default_batch` | No | Template | Positive number used as the default batch size. Leave blank or omit it to skip the batch-size prompt. |
 | `items` | Yes | Template | Array of items to add to Reminders. |
 | `name` | Yes | Item | Item name shown in ListKit and sent to Reminders. |
-| `quantity` | No | Item | Number scaled by batch size when present. |
+| `quantity` | No | Item | Number scaled by batch size when present. Leave blank or omit it for plain checklist items. |
 | `unit` | No | Item | Singular unit name, such as `can`, `clove`, `tbsp`, or `lb`. |
 | `always_on_hand` | No | Item | `true` means the item starts unchecked when on-hand items are excluded. Defaults to `false`. Useful for recipe pantry staples, travel items you usually keep packed, or store items you buy only sometimes. |
+
+## Choosing Field Values
+
+Use `default_batch` when a template has quantities that should scale together.
+For example, a recipe might default to `3` batches because that is the usual
+amount you cook. When you run the template, ListKit asks for the batch size and
+starts on that default value.
+
+Leave `default_batch` blank or remove it when the list should not scale. This is
+usually right for packing lists, recurring store lists, errands, chores, and
+project setup checklists. Without `default_batch`, ListKit skips the batch-size
+prompt entirely.
+
+Use `quantity` and `unit` only when the amount matters in the final Reminder.
+For basic items like `Towels`, `Passport`, or `Coffee pods`, leave both blank or
+omit them. For count-based items like `3 Apples`, set `quantity` and leave
+`unit` blank.
+
+Use `always_on_hand` for items that should usually start unchecked. In recipes,
+that might mean pantry staples. In packing lists, it might mean items that stay
+in a go bag. In store lists, it can mean things you buy sometimes, but not every
+visit.
 
 ## Blank Values
 
