@@ -1,10 +1,18 @@
-# Recipe Shopper - Development Notes
+# Easy Reminder Templates - Development Notes
+
+> Alpha software: this project is under active development. It may change
+> behavior, config shape, install process, and Apple Reminders output before a
+> stable release.
 
 ## Project Goal
 
-Recipe Shopper is a small Python utility that generates Apple Reminders shopping lists from JSON recipe files.
+Easy Reminder Templates is a small Python utility that generates Apple Reminders
+items from reusable JSON templates.
 
-The long-term goal is to make grocery shopping for recurring recipes fast and nearly frictionless while keeping the implementation simple and maintainable.
+The long-term goal is to make repeatable Reminders lists fast and nearly
+frictionless while keeping the implementation simple and maintainable. Recipes
+are the first use case, but the tool should remain broad enough for packing
+lists, travel prep, chores, and other reusable list templates.
 
 This is a local project stored in Git.
 
@@ -39,7 +47,7 @@ External libraries should stay limited and must clearly improve the project.
 ## Project Structure
 
 ```text
-recipe-shopper/
+easy-reminder-templates/
 ├── .gitignore
 ├── README.md
 ├── DEVELOPMENT.md
@@ -74,14 +82,14 @@ Only create files when they become necessary.
 
 ### Phase 1
 
-- Load recipes from JSON.
-- List available recipes.
-- Select a recipe.
+- Load templates from JSON.
+- List available templates.
+- Select a template.
 - Ask for batch size, defaulting to `default_batch`.
-- Ask whether to include on-hand ingredients.
-- Scale ingredient quantities.
-- Format ingredient quantities nicely.
-- Print the shopping list to the terminal.
+- Ask whether to include on-hand items.
+- Scale item quantities.
+- Format item quantities nicely.
+- Print the final list to the terminal.
 
 ### Phase 2
 
@@ -89,12 +97,9 @@ Integrate with Apple Reminders.
 
 The generated reminders should:
 
-- Create a parent reminder for the recipe.
-- Create ingredient subtasks.
-- Add the recipe URL and notes to the parent reminder.
-- Append `[short_name]` to ingredient reminders when configured.
-- Target an existing shared Reminders grocery list.
-- Print a creation summary, including omitted ingredients in the terminal-only omitted style.
+- Append `[short_name]` to created reminders when configured.
+- Target an existing Reminders list.
+- Print a creation summary.
 
 ---
 
@@ -105,7 +110,7 @@ These have intentionally been postponed.
 - Ingredient IDs
 - Pantry inventory
 - Store departments
-- Multiple recipe databases
+- Multiple template databases
 - Native macOS application
 - Cloud synchronization
 

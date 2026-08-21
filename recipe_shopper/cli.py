@@ -87,7 +87,7 @@ COLOR_SETTING_INSTRUCTIONS: dict[str, str] = {
 	"quantity_color": "Used for quantities and units in terminal ingredient lists.",
 	"omitted_ingredient_color": "Used for ingredients excluded from the final list.",
 }
-APP_NAME: str = "Recipe Shopper"
+APP_NAME: str = "Easy Reminder Templates"
 
 
 class ShopAbort(Exception):
@@ -180,9 +180,9 @@ configure_questionary_checkbox_rendering()
 def main() -> int:
 	parser: argparse.ArgumentParser = argparse.ArgumentParser(
 		prog="shop",
-		description="Generate a shopping list from a recipe.",
+		description="Create Apple Reminders items from a reusable list template.",
 	)
-	parser.add_argument("short_name", nargs="?", help="recipe short name")
+	parser.add_argument("short_name", nargs="?", help="template short name")
 	args: argparse.Namespace = parser.parse_args()
 
 	project_dir: Path = get_project_root()
@@ -296,7 +296,7 @@ def get_user_data_dir() -> Path:
 	if sys.platform == "darwin":
 		return Path.home() / "Library" / "Application Support" / APP_NAME
 
-	return Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "recipe-shopper"
+	return Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "easy-reminder-templates"
 
 
 def resolve_config_path(project_dir: Path) -> Path:

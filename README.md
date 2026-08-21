@@ -1,14 +1,20 @@
-# Recipe Shopper
+# Easy Reminder Templates
 
-Recipe Shopper is a local command-line tool for generating shopping lists from
-JSON recipe files.
+> Alpha software: this project is actively changing and should be used at your
+> own risk while it is in development. It can create real Apple Reminders items,
+> so consider testing with a throwaway Reminders list first.
+
+Easy Reminder Templates is a local command-line tool for creating Apple
+Reminders lists from reusable JSON templates. Recipes are the first supported
+template type, but the format is intended to work for repeatable lists like
+packing lists, trip prep, chores, or project checklists.
 
 ## Usage
 
 Install with `pipx`:
 
 ```sh
-pipx install git+https://github.com/yourname/recipe-shopper.git
+pipx install git+https://github.com/yourname/easy-reminder-templates.git
 ```
 
 For local development, install in editable mode:
@@ -18,7 +24,7 @@ python3 -m venv .venv
 .venv/bin/python -m pip install -e .
 ```
 
-Run with an optional recipe short name:
+Run with an optional template short name:
 
 ```sh
 shop
@@ -31,26 +37,26 @@ a selection.
 When installed outside this repository, `shop` creates user files in:
 
 ```text
-~/Library/Application Support/Recipe Shopper/
+~/Library/Application Support/Easy Reminder Templates/
 ```
 
 That folder contains `config.json` and `recipes.json`.
 
 The CLI then prompts for:
 
-- batch size, defaulting to the recipe's `default_batch`
-- whether to include ingredients marked as usually on hand
+- batch size, defaulting to the template's `default_batch`
+- whether to include items marked as usually on hand
 
 Interactive prompts can be cancelled with the `Abort` option, `Ctrl-C`, or `q`
 where text input is accepted.
 
-Before sending anything to the target app, `shop` shows all ingredients in a
-checkbox list. Ingredients are preselected based on the on-hand prompt, and can
-be added or removed before the final ingredient list is created.
+Before sending anything to the target app, `shop` shows all template items in a
+checkbox list. Items are preselected based on the on-hand prompt, and can be
+added or removed before the final list is created.
 
-## Recipes
+## Templates
 
-Recipes live in `recipes.json`.
+Templates currently live in `recipes.json`.
 
 ```json
 {
@@ -79,7 +85,7 @@ Notes:
 - `short_name` is optional.
 - `unit` should be singular, such as `can`, `clove`, or `lb`.
 - Omit `unit` when it is not needed.
-- `always_on_hand` marks ingredients that are normally kept in the pantry.
+- `always_on_hand` marks items that are normally already available.
 - Quantities are stored numerically and scaled by batch size.
 
 ## Configuration
