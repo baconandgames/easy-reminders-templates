@@ -134,7 +134,7 @@ The CLI then prompts for:
 Interactive prompts can be exited with `Esc`. Pressing `Esc` backs out of
 submenus and exits when you reach the top level.
 
-Before sending anything to the target app, `listkit` shows all template items in a
+Before sending anything to Apple Reminders, `listkit` shows all template items in a
 checkbox list. Items are preselected based on the on-hand prompt, and can be
 added or removed before the final list is created.
 
@@ -161,7 +161,6 @@ text editor.
 
 ```json
 {
-  "target_app": "apple_reminders",
   "apple_reminders_list_id": "",
   "apple_reminders_list_name": "Groceries",
   "hidden_apple_reminders_list_ids": [],
@@ -190,10 +189,6 @@ Supported color values:
 
 Invalid color values fall back to the default for that setting.
 
-Supported target app values:
-
-- `apple_reminders`
-
 Apple Reminders lists can be targeted by `apple_reminders_list_name`, including
 lists inside Reminders folders. `listkit` prompts you to choose from available
 lists, starts on the configured list name, and shows a few existing items only
@@ -205,6 +200,6 @@ Reminders list before adding the selected template items.
 When `apple_reminders_list_id` is set, it is preferred over
 `apple_reminders_list_name`.
 
-Run `listkit config` to choose which Apple Reminders lists appear in the target
-list picker, edit terminal colors, update common options, and check for GitHub
-release updates. Hidden lists are stored in `hidden_apple_reminders_list_ids`.
+Run `listkit config` to choose which Apple Reminders lists appear in the list
+picker, edit terminal colors, update common options, and check for GitHub release
+updates. Hidden lists are stored in `hidden_apple_reminders_list_ids`.

@@ -327,7 +327,7 @@ Expected behavior:
 - If the name has one match, save that new ID.
 - If the name has multiple matches or no matches, prompt the user to choose or
   create a list.
-- During normal `listkit` runs, still show the target list picker before sending so
+- During normal `listkit` runs, still show the Reminders list picker before sending so
   stale config can be corrected before writing anything.
 
 For a user with no Reminders lists, prompt rather than assuming:
@@ -354,7 +354,7 @@ Migration triggers:
 - Splitting one setting into multiple settings.
 - Combining multiple settings into one structured object.
 - Changing the meaning or accepted format of a setting.
-- Moving Apple Reminders settings into a broader multi-target app structure.
+- Moving Apple Reminders settings into a broader multi-app structure.
 - Changing template storage from a single file to per-template files.
 
 Recommended migration behavior:

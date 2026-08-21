@@ -11,7 +11,6 @@ def test_load_config_uses_defaults_when_file_is_missing() -> None:
 	with TemporaryDirectory() as directory:
 		config = load_config(Path(directory) / "missing.json")
 
-	assert config.target_app == "apple_reminders"
 	assert config.apple_reminders_list_id == ""
 	assert config.apple_reminders_list_name == "Groceries"
 	assert config.hidden_apple_reminders_list_ids == []
@@ -34,7 +33,6 @@ def test_load_config_reads_values() -> None:
 
 		config = load_config(path)
 
-	assert config.target_app == "apple_reminders"
 	assert config.apple_reminders_list_id == "abc123"
 	assert config.apple_reminders_list_name == "Shared Grocery"
 	assert config.hidden_apple_reminders_list_ids == ["list-1", "list-2"]
@@ -85,11 +83,12 @@ def test_save_config_writes_values() -> None:
 
 		data = json.loads(path.read_text(encoding="utf-8"))
 
-	assert "delivery_mode" not in data
-	assert data["apple_reminders_list_name"] == "Shared Grocery"
-	assert data["hidden_apple_reminders_list_ids"] == ["list-1"]
-	assert data["selection_color"] == "#ff4b1f"
-	assert data["skipped_update_version"] == "0.1.5"
+		assert "target_app" not in data
+		assert "delivery_mode" not in data
+		assert data["apple_reminders_list_name"] == "Shared Grocery"
+		assert data["hidden_apple_reminders_list_ids"] == ["list-1"]
+		assert data["selection_color"] == "#ff4b1f"
+		assert data["skipped_update_version"] == "0.1.5"
 
 
 def test_load_config_rejects_invalid_hidden_reminders_list_ids() -> None:
@@ -105,17 +104,14 @@ def test_load_config_rejects_invalid_hidden_reminders_list_ids() -> None:
 			raise AssertionError("Expected ConfigLoadError")
 
 
-def test_load_config_rejects_invalid_target_apps() -> None:
+def test_load_config_ignores_legacy_target_app() -> None:
 	with TemporaryDirectory() as directory:
 		path: Path = Path(directory) / "config.json"
 		path.write_text('{"target_app": "google_notes"}', encoding="utf-8")
 
-		try:
-			load_config(path)
-		except ConfigLoadError as error:
-			assert 'Config value "target_app" has unsupported target "google_notes".' == str(error)
-		else:
-			raise AssertionError("Expected ConfigLoadError")
+		config = load_config(path)
+
+	assert config.apple_reminders_list_name == "Groceries"
 
 
 def test_load_config_rejects_empty_reminders_list_names() -> None:
@@ -136,6 +132,6 @@ def test_load_config_ignores_legacy_delivery_mode() -> None:
 		path: Path = Path(directory) / "config.json"
 		path.write_text('{"delivery_mode": "send"}', encoding="utf-8")
 
-		config = load_config(path)
+	config = load_config(path)
 
-	assert config.target_app == "apple_reminders"
+	assert config.apple_reminders_list_name == "Groceries"

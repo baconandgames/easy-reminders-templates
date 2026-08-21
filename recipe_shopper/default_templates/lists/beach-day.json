@@ -2,10 +2,13 @@
   "schema_version": 1,
   "type": "list",
   "name": "Beach Day",
-  "short_name": "Beach",
+  "short_name": "beach",
   "items": [
     {
       "name": "Towels"
+    },
+    {
+      "name": "Beach blanket"
     },
     {
       "name": "Sunscreen"
@@ -17,7 +20,49 @@
       "name": "Snacks"
     },
     {
+      "name": "Cooler"
+    },
+    {
+      "name": "Ice packs"
+    },
+    {
       "name": "Sunglasses",
+      "always_on_hand": true
+    },
+    {
+      "name": "Hats",
+      "always_on_hand": true
+    },
+    {
+      "name": "Swimsuits"
+    },
+    {
+      "name": "Sandals",
+      "always_on_hand": true
+    },
+    {
+      "name": "Change of clothes"
+    },
+    {
+      "name": "Wet bag"
+    },
+    {
+      "name": "Phone charger",
+      "always_on_hand": true
+    },
+    {
+      "name": "Portable battery",
+      "always_on_hand": true
+    },
+    {
+      "name": "Speaker",
+      "always_on_hand": true
+    },
+    {
+      "name": "Trash bags"
+    },
+    {
+      "name": "First aid kit",
       "always_on_hand": true
     }
   ]

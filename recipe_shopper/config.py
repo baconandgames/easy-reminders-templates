@@ -8,7 +8,6 @@ from typing import Any
 from recipe_shopper.colors import normalize_color
 
 
-SUPPORTED_TARGET_APPS: set[str] = {"apple_reminders"}
 DEFAULT_STANDARD_TEXT_COLOR: str = "#f2f0ea"
 DEFAULT_QUANTITY_COLOR: str = "#37b7f0"
 DEFAULT_SELECTION_COLOR: str = "#ff4b1f"
@@ -17,7 +16,6 @@ DEFAULT_OMITTED_INGREDIENT_COLOR: str = "#777777"
 
 @dataclass(frozen=True)
 class Config:
-	target_app: str = "apple_reminders"
 	apple_reminders_list_id: str = ""
 	apple_reminders_list_name: str = "Groceries"
 	hidden_apple_reminders_list_ids: list[str] = field(default_factory=list)
@@ -46,7 +44,6 @@ def load_config(path: Path) -> Config:
 	if not isinstance(raw_data, dict):
 		raise ConfigLoadError("Config file must contain a JSON object.")
 
-	target_app: str = _read_target_app(raw_data, "target_app", Config.target_app)
 	apple_reminders_list_id: str = _read_optional_string(
 		raw_data,
 		"apple_reminders_list_id",
@@ -79,7 +76,6 @@ def load_config(path: Path) -> Config:
 	)
 
 	return Config(
-		target_app=target_app,
 		apple_reminders_list_id=apple_reminders_list_id,
 		apple_reminders_list_name=apple_reminders_list_name,
 		hidden_apple_reminders_list_ids=hidden_apple_reminders_list_ids,
@@ -95,7 +91,6 @@ def load_config(path: Path) -> Config:
 
 def save_config(path: Path, config: Config) -> None:
 	data: dict[str, Any] = {
-		"target_app": config.target_app,
 		"apple_reminders_list_id": config.apple_reminders_list_id,
 		"apple_reminders_list_name": config.apple_reminders_list_name,
 		"hidden_apple_reminders_list_ids": config.hidden_apple_reminders_list_ids,
@@ -145,14 +140,6 @@ def _read_string_list(raw_data: dict[str, Any], key: str, default: list[str]) ->
 	for item in value:
 		if not isinstance(item, str):
 			raise ConfigLoadError(f'Config value "{key}" must be an array of strings.')
-
-	return value
-
-
-def _read_target_app(raw_data: dict[str, Any], key: str, default: str) -> str:
-	value: str = _read_string(raw_data, key, default)
-	if value not in SUPPORTED_TARGET_APPS:
-		raise ConfigLoadError(f'Config value "{key}" has unsupported target "{value}".')
 
 	return value
 

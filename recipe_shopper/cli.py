@@ -36,7 +36,6 @@ from recipe_shopper.delivery import (
 	DeliveryError,
 	DeliveryResult,
 	DeliveryTargetOption,
-	get_delivery_target,
 )
 from recipe_shopper.formatter import (
 	ColorScheme,
@@ -373,8 +372,7 @@ def run_listkit_flow(short_name: str | None, config: Config, templates_path: Pat
 	print(render_final_ingredient_list(without_item_tags(shopping_list), color_scheme=color_scheme))
 
 	try:
-		delivery_result: DeliveryResult = get_delivery_target(
-			config.target_app,
+		delivery_result: DeliveryResult = AppleRemindersTarget(
 			target_selector=lambda target_name, options, omitted_count: select_delivery_target(
 				target_name,
 				options,
