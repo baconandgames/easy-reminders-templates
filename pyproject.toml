@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "easy-reminder-templates"
-version = "0.1.13"
+version = "0.2.0"
 description = "Create Apple Reminders items from reusable list templates."
 readme = "README.md"
 requires-python = ">=3.11"

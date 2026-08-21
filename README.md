@@ -150,53 +150,9 @@ templates/
     beach-day.json
 ```
 
-Recipe-style template:
-
-```json
-{
-  "schema_version": 1,
-  "type": "recipe",
-  "name": "Recipe Name",
-  "short_name": "Optional tag",
-  "default_batch": 1,
-  "items": [
-    {
-      "name": "Ingredient",
-      "quantity": 1,
-      "unit": "singular unit",
-      "always_on_hand": false
-    }
-  ]
-}
-```
-
-Simple list template:
-
-```json
-{
-  "schema_version": 1,
-  "type": "list",
-  "name": "Beach Day",
-  "short_name": "Beach",
-  "items": [
-    {
-      "name": "Towels"
-    },
-    {
-      "name": "Sunscreen"
-    }
-  ]
-}
-```
-
-Notes:
-
-- `short_name` is optional.
-- `quantity` is optional.
-- `unit` should be singular, such as `can`, `clove`, or `lb`.
-- Omit `unit` when it is not needed or when no quantity is used.
-- `always_on_hand` is optional and defaults to `false`.
-- Quantities are stored numerically and scaled by batch size when present.
+See [TEMPLATES.md](TEMPLATES.md) for the full JSON template guide, including
+examples, field descriptions, blank-value behavior, and how to create a template
+from an existing Apple Reminders list.
 
 ## Configuration
 

@@ -690,6 +690,7 @@ def render_created_template_result(template_path: Path) -> str:
 		[
 			style_instruction(f"Template created: {template_path}"),
 			style_instruction("Edit the JSON later to add quantities, units, default batch, or on-hand settings."),
+			style_instruction("See TEMPLATES.md for the template JSON guide."),
 		]
 	)
 

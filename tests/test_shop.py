@@ -1215,6 +1215,13 @@ def test_next_available_template_path_avoids_overwriting_existing_template(tmp_p
 	assert shop_script.next_available_template_path(lists_path, "beach-day") == lists_path / "beach-day-2.json"
 
 
+def test_render_created_template_result_points_to_template_docs(tmp_path) -> None:
+	result = shop_script.render_created_template_result(tmp_path / "templates" / "lists" / "beach-day.json")
+
+	assert "Template created:" in result
+	assert "See TEMPLATES.md for the template JSON guide." in result
+
+
 def test_format_delivery_target_option_handles_empty_list() -> None:
 	option = DeliveryTargetOption(
 		identifier="list-1",
