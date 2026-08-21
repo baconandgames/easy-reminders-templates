@@ -9,13 +9,67 @@ Reminders lists from reusable JSON templates. Recipes are the first supported
 template type, but the format is intended to work for repeatable lists like
 packing lists, trip prep, chores, or project checklists.
 
-## Usage
+## Install
 
-Install with `pipx`:
+Easy Reminder Templates is currently macOS-only.
+
+### 1. Check for Homebrew
 
 ```sh
-pipx install git+https://github.com/yourname/easy-reminder-templates.git
+brew --version
 ```
+
+If that command fails, install Homebrew from:
+
+```text
+https://brew.sh
+```
+
+### 2. Install pipx
+
+```sh
+brew install pipx
+pipx ensurepath
+```
+
+Close and reopen Terminal if `pipx ensurepath` says your PATH changed.
+
+Check that `pipx` is available:
+
+```sh
+pipx --version
+```
+
+### 3. Install Easy Reminder Templates
+
+```sh
+pipx install git+https://github.com/baconandgames/easy-reminders-templates.git
+```
+
+Check that `shop` is available:
+
+```sh
+shop --help
+```
+
+## First Run
+
+Open the config menu first:
+
+```sh
+shop config
+```
+
+Then create a list from a template:
+
+```sh
+shop
+```
+
+The first time `shop` creates Apple Reminders, macOS may ask for permission to
+access Reminders.
+
+## Local Development
 
 For local development, install in editable mode:
 
@@ -23,6 +77,8 @@ For local development, install in editable mode:
 python3 -m venv .venv
 .venv/bin/python -m pip install -e .
 ```
+
+## Usage
 
 Run with an optional template short name:
 
