@@ -30,9 +30,9 @@ The CLI then prompts for:
 Interactive prompts can be cancelled with the `Abort` option, `Ctrl-C`, or `q`
 where text input is accepted.
 
-If on-hand ingredients are omitted, they still appear at the end of the terminal
-flow with checkbox controls so individual omitted items can be added back before
-the list is sent to the target app.
+Before sending anything to the target app, `shop` shows all ingredients in a
+checkbox list. Ingredients are preselected based on the on-hand prompt, and can
+be added or removed before the final ingredient list is created.
 
 ## Recipes
 

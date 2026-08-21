@@ -34,6 +34,7 @@ class ShoppingListItem:
 	unit: str | None
 	tag: str | None
 	omitted: bool
+	always_on_hand: bool
 
 
 @dataclass(frozen=True)
@@ -63,6 +64,7 @@ def build_shopping_list(
 			unit=ingredient.get("unit"),
 			tag=short_name,
 			omitted=ingredient["always_on_hand"] and not include_on_hand,
+			always_on_hand=ingredient["always_on_hand"],
 		)
 		items.append(item)
 

@@ -40,7 +40,7 @@ ABORT_COMMANDS: set[str] = {"q", "quit", "cancel", "abort"}
 ABORT_CHOICE: str = "__abort__"
 START_INSTRUCTION: str = "[↑↓ + ENTER to select | Ctrl-C to abort]"
 SELECT_INSTRUCTION: str = " "
-OMITTED_INSTRUCTION: str = "\n[SPACE to include omitted items | ENTER to continue | Ctrl-C to abort]\n"
+INGREDIENT_INSTRUCTION: str = "\n[SPACE to include/exclude ingredients | ENTER to continue | Ctrl-C to abort]\n"
 TRUNCATED_SAMPLE_LENGTH: int = 11
 PROMPT_COLORS: dict[str, str] = {
 	"default": "",
@@ -207,25 +207,18 @@ def main() -> int:
 		quantity_color=config.quantity_color,
 		omitted_ingredient_color=config.omitted_ingredient_color,
 	)
-	print(
-		render_shopping_list(
-			without_item_tags(shopping_list),
-			color_scheme=color_scheme,
-		).replace("\n\nIncluded\n", "\n\nIngredients to be Added\n", 1)
-	)
 	try:
-		if len(shopping_list.omitted_items) > 0:
-			selected_omitted_indexes: list[int] = prompt_for_omitted_items(
-				shopping_list,
-				prompt_style=prompt_style,
-			)
-			shopping_list = include_selected_omitted_items(shopping_list, selected_omitted_indexes)
-			if len(selected_omitted_indexes) > 0:
-				print()
-				print(render_included_section(without_item_tags(shopping_list), color_scheme=color_scheme))
+		selected_ingredient_indexes: list[int] = prompt_for_ingredient_items(
+			shopping_list,
+			prompt_style=prompt_style,
+		)
+		shopping_list = apply_selected_ingredients(shopping_list, selected_ingredient_indexes)
 	except ShopAbort:
 		print("Aborted.")
 		return 130
+
+	print()
+	print(render_final_ingredient_list(without_item_tags(shopping_list), color_scheme=color_scheme))
 
 	try:
 		delivery_result: DeliveryResult = get_delivery_target(
@@ -340,31 +333,38 @@ def select_delivery_target(
 	return require_selection(ask_or_abort(selection))
 
 
-def prompt_for_omitted_items(shopping_list: ShoppingList, prompt_style=None) -> list[int]:
-	prefix_width: int = max((len(format_item_prefix(item)) for item in shopping_list.items), default=0)
-	print()
+def prompt_for_ingredient_items(shopping_list: ShoppingList, prompt_style=None) -> list[int]:
+	ordered_items: list[tuple[int, ShoppingListItem]] = order_items_with_on_hand_last(shopping_list.items)
+	prefix_width: int = max((len(format_item_prefix(item)) for _index, item in ordered_items), default=0)
 	choices: list[questionary.Choice] = [
 		questionary.Choice(
 			title=format_item(replace(item, tag=None), prefix_width),
 			value=index,
+			checked=not item.omitted,
 		)
-		for index, item in enumerate(shopping_list.omitted_items)
+		for index, item in ordered_items
 	]
+	initial_choice: questionary.Choice | None = choices[0] if len(choices) > 0 else None
+	if any(item.omitted for _index, item in ordered_items):
+		initial_choice = next(
+			choice
+			for choice, (_index, item) in zip(choices, ordered_items)
+			if item.omitted
+		)
 	selection = questionary.checkbox(
 		"",
 		choices=choices,
-		instruction=OMITTED_INSTRUCTION,
+		instruction=INGREDIENT_INSTRUCTION,
+		initial_choice=initial_choice,
 		pointer=">",
-		qmark="Select Individual On-Hand Items",
+		qmark="Choose Ingredients",
 		style=prompt_style,
 	)
 	selection = ask_or_abort(selection)
-	selected_indexes = require_selection(selection)
-	print(f"\033[F\033[KSelect Individual On-Hand Items  {style_answer(format_added_count(len(selected_indexes)))}")
-	return selected_indexes
+	return require_selection(selection)
 
 
-def render_included_section(shopping_list: ShoppingList, color_scheme: ColorScheme) -> str:
+def render_final_ingredient_list(shopping_list: ShoppingList, color_scheme: ColorScheme) -> str:
 	full_render: str = render_shopping_list(shopping_list, color_scheme=color_scheme)
 	_lines_before_included, separator, included_section = full_render.partition("\n\nIncluded\n")
 	if separator == "":
@@ -383,32 +383,27 @@ def without_item_tags(shopping_list: ShoppingList) -> ShoppingList:
 	)
 
 
-def include_selected_omitted_items(
+def apply_selected_ingredients(
 	shopping_list: ShoppingList,
-	selected_omitted_indexes: list[int],
+	selected_ingredient_indexes: list[int],
 ) -> ShoppingList:
-	selected_indexes: set[int] = set(selected_omitted_indexes)
-	promoted_items: dict[int, ShoppingListItem] = {
-		id(item): replace(item, omitted=False)
-		for index, item in enumerate(shopping_list.omitted_items)
-		if index in selected_indexes
-	}
-	included_items: list[ShoppingListItem] = shopping_list.included_items + [
-		promoted_items[id(item)]
-		for index, item in enumerate(shopping_list.omitted_items)
-		if index in selected_indexes
-	]
-	omitted_items: list[ShoppingListItem] = [
-		item for index, item in enumerate(shopping_list.omitted_items) if index not in selected_indexes
+	selected_indexes: set[int] = set(selected_ingredient_indexes)
+	items: list[ShoppingListItem] = [
+		replace(item, omitted=index not in selected_indexes)
+		for index, item in order_items_with_on_hand_last(shopping_list.items)
 	]
 
 	return ShoppingList(
 		recipe_name=shopping_list.recipe_name,
 		batch_size=shopping_list.batch_size,
-		items=[promoted_items.get(id(item), item) for item in shopping_list.items],
-		included_items=included_items,
-		omitted_items=omitted_items,
+		items=items,
+		included_items=[item for item in items if not item.omitted],
+		omitted_items=[item for item in items if item.omitted],
 	)
+
+
+def order_items_with_on_hand_last(items: list[ShoppingListItem]) -> list[tuple[int, ShoppingListItem]]:
+	return sorted(enumerate(items), key=lambda indexed_item: indexed_item[1].always_on_hand)
 
 
 def format_delivery_target_option(option: DeliveryTargetOption) -> str:
@@ -428,15 +423,6 @@ def truncate_sample_item(item: str) -> str:
 
 def style_instruction(value: str) -> str:
 	return f"\033[90m{value}\033[0m"
-
-
-def style_answer(value: str) -> str:
-	return f"\033[33m{value}\033[0m"
-
-
-def format_added_count(count: int) -> str:
-	item_label: str = "item" if count == 1 else "items"
-	return f"{count} {item_label} added"
 
 
 def validate_batch_size(selection: str) -> bool | str:

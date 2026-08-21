@@ -74,13 +74,14 @@ def test_prompt_for_batch_size_can_abort(monkeypatch) -> None:
 		raise AssertionError("Expected ShopAbort")
 
 
-def test_prompt_for_omitted_items_returns_selected_indexes(monkeypatch) -> None:
+def test_prompt_for_ingredient_items_returns_selected_indexes(monkeypatch) -> None:
 	recipe = {
 		"name": "Test Recipe",
 		"short_name": "Test",
 		"ingredients": [
 			{"name": "Apple", "quantity": 1, "always_on_hand": False},
 			{"name": "Salt", "quantity": 1, "unit": "tsp", "always_on_hand": True},
+			{"name": "Banana", "quantity": 1, "always_on_hand": False},
 		],
 	}
 	shopping_list = build_shopping_list(recipe, 2, include_on_hand=False)
@@ -88,31 +89,64 @@ def test_prompt_for_omitted_items_returns_selected_indexes(monkeypatch) -> None:
 
 	def fake_checkbox(*args, **kwargs):
 		captured["choices"] = kwargs["choices"]
-		return FakePrompt([0])
+		captured["initial_choice"] = kwargs["initial_choice"]
+		return FakePrompt([0, 2])
 
 	monkeypatch.setattr(shop_script.questionary, "checkbox", fake_checkbox)
 
-	assert shop_script.prompt_for_omitted_items(shopping_list) == [0]
-	assert captured["choices"][0].title == "2 tsp     Salt"
+	assert shop_script.prompt_for_ingredient_items(shopping_list) == [0, 2]
+	assert captured["choices"][0].title == "2         Apples"
+	assert captured["choices"][0].checked is True
+	assert captured["choices"][1].title == "2         Bananas"
+	assert captured["choices"][1].checked is True
+	assert captured["choices"][2].title == "2 tsp     Salt"
+	assert captured["choices"][2].checked is False
+	assert captured["initial_choice"] == captured["choices"][2]
 
 
-def test_include_selected_omitted_items_promotes_selected_items() -> None:
+def test_apply_selected_ingredients_sets_included_and_omitted_items() -> None:
 	recipe = {
 		"name": "Test Recipe",
 		"short_name": "Test",
 		"ingredients": [
 			{"name": "Apple", "quantity": 1, "always_on_hand": False},
 			{"name": "Salt", "quantity": 1, "unit": "tsp", "always_on_hand": True},
+			{"name": "Banana", "quantity": 1, "always_on_hand": False},
 			{"name": "Oil", "quantity": 1, "unit": "tbsp", "always_on_hand": True},
 		],
 	}
 	shopping_list = build_shopping_list(recipe, 2, include_on_hand=False)
 
-	updated = shop_script.include_selected_omitted_items(shopping_list, [1])
+	updated = shop_script.apply_selected_ingredients(shopping_list, [0, 2, 3])
 
-	assert [item.name for item in updated.included_items] == ["Apple", "Oil"]
+	assert [item.name for item in updated.items] == ["Apple", "Banana", "Salt", "Oil"]
+	assert [item.name for item in updated.included_items] == ["Apple", "Banana", "Oil"]
 	assert [item.name for item in updated.omitted_items] == ["Salt"]
-	assert updated.included_items[1].omitted is False
+	assert updated.included_items[2].omitted is False
+
+
+def test_prompt_for_ingredient_items_starts_on_first_item_when_on_hand_is_included(monkeypatch) -> None:
+	recipe = {
+		"name": "Test Recipe",
+		"short_name": "Test",
+		"ingredients": [
+			{"name": "Apple", "quantity": 1, "always_on_hand": False},
+			{"name": "Salt", "quantity": 1, "unit": "tsp", "always_on_hand": True},
+		],
+	}
+	shopping_list = build_shopping_list(recipe, 2, include_on_hand=True)
+	captured = {}
+
+	def fake_checkbox(*args, **kwargs):
+		captured["choices"] = kwargs["choices"]
+		captured["initial_choice"] = kwargs["initial_choice"]
+		return FakePrompt([0, 1])
+
+	monkeypatch.setattr(shop_script.questionary, "checkbox", fake_checkbox)
+
+	shop_script.prompt_for_ingredient_items(shopping_list)
+
+	assert captured["initial_choice"] == captured["choices"][0]
 
 
 def test_without_item_tags_removes_display_tags_without_mutating_source() -> None:
@@ -133,7 +167,7 @@ def test_without_item_tags_removes_display_tags_without_mutating_source() -> Non
 	assert shopping_list.included_items[0].tag == "Test"
 
 
-def test_render_included_section_excludes_recipe_title() -> None:
+def test_render_final_ingredient_list_excludes_recipe_title() -> None:
 	recipe = {
 		"name": "Test Recipe",
 		"short_name": "Test",
@@ -143,10 +177,10 @@ def test_render_included_section_excludes_recipe_title() -> None:
 		],
 	}
 	shopping_list = build_shopping_list(recipe, 2, include_on_hand=False)
-	updated = shop_script.include_selected_omitted_items(shopping_list, [0])
+	updated = shop_script.apply_selected_ingredients(shopping_list, [0, 1])
 	display_list = shop_script.without_item_tags(updated)
 
-	assert shop_script.render_included_section(display_list, shop_script.ColorScheme()) == (
+	assert shop_script.render_final_ingredient_list(display_list, shop_script.ColorScheme()) == (
 		"Final Ingredient List\n"
 		"------------------\n"
 		"- \033[32m2    \033[0m     Apples\n"
@@ -167,12 +201,6 @@ def test_checked_active_checkbox_row_uses_highlighted_style() -> None:
 	assert ("class:highlighted", "[x] ") in tokens
 	assert ("class:highlighted", "Salt") in tokens
 	assert ("class:selected", "Salt") not in tokens
-
-
-def test_format_added_count_pluralizes_items() -> None:
-	assert shop_script.format_added_count(0) == "0 items added"
-	assert shop_script.format_added_count(1) == "1 item added"
-	assert shop_script.format_added_count(2) == "2 items added"
 
 
 def test_render_delivery_result_shows_dry_run_summary() -> None:
