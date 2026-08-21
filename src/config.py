@@ -14,6 +14,7 @@ SUPPORTED_DELIVERY_MODES: set[str] = {"dry_run", "create"}
 class Config:
 	target_app: str = "apple_reminders"
 	delivery_mode: str = "dry_run"
+	apple_reminders_list_id: str = ""
 	apple_reminders_list_name: str = "Groceries"
 	append_short_name: bool = True
 	include_on_hand_default: bool = False
@@ -40,6 +41,11 @@ def load_config(path: Path) -> Config:
 
 	target_app: str = _read_target_app(raw_data, "target_app", Config.target_app)
 	delivery_mode: str = _read_delivery_mode(raw_data, "delivery_mode", Config.delivery_mode)
+	apple_reminders_list_id: str = _read_optional_string(
+		raw_data,
+		"apple_reminders_list_id",
+		Config.apple_reminders_list_id,
+	)
 	apple_reminders_list_name: str = _read_string(
 		raw_data,
 		"apple_reminders_list_name",
@@ -58,6 +64,7 @@ def load_config(path: Path) -> Config:
 	return Config(
 		target_app=target_app,
 		delivery_mode=delivery_mode,
+		apple_reminders_list_id=apple_reminders_list_id,
 		apple_reminders_list_name=apple_reminders_list_name,
 		append_short_name=append_short_name,
 		include_on_hand_default=include_on_hand_default,
@@ -82,6 +89,14 @@ def _read_string(raw_data: dict[str, Any], key: str, default: str) -> str:
 
 	if value.strip() == "":
 		raise ConfigLoadError(f'Config value "{key}" must not be empty.')
+
+	return value
+
+
+def _read_optional_string(raw_data: dict[str, Any], key: str, default: str) -> str:
+	value: Any = raw_data.get(key, default)
+	if not isinstance(value, str):
+		raise ConfigLoadError(f'Config value "{key}" must be a string.')
 
 	return value
 

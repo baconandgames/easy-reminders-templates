@@ -12,6 +12,7 @@ def test_load_config_uses_defaults_when_file_is_missing() -> None:
 
 	assert config.target_app == "apple_reminders"
 	assert config.delivery_mode == "dry_run"
+	assert config.apple_reminders_list_id == ""
 	assert config.apple_reminders_list_name == "Groceries"
 	assert config.append_short_name is True
 	assert config.include_on_hand_default is False
@@ -24,7 +25,7 @@ def test_load_config_reads_values() -> None:
 	with TemporaryDirectory() as directory:
 		path: Path = Path(directory) / "config.json"
 		path.write_text(
-			'{"target_app": "apple_reminders", "delivery_mode": "create", "apple_reminders_list_name": "Shared Grocery", "append_short_name": false, "include_on_hand_default": true, "standard_text_color": "white", "quantity_color": "cyan", "omitted_ingredient_color": "grey"}',
+			'{"target_app": "apple_reminders", "delivery_mode": "create", "apple_reminders_list_id": "abc123", "apple_reminders_list_name": "Shared Grocery", "append_short_name": false, "include_on_hand_default": true, "standard_text_color": "white", "quantity_color": "cyan", "omitted_ingredient_color": "grey"}',
 			encoding="utf-8",
 		)
 
@@ -32,6 +33,7 @@ def test_load_config_reads_values() -> None:
 
 	assert config.target_app == "apple_reminders"
 	assert config.delivery_mode == "create"
+	assert config.apple_reminders_list_id == "abc123"
 	assert config.apple_reminders_list_name == "Shared Grocery"
 	assert config.append_short_name is False
 	assert config.include_on_hand_default is True

@@ -66,6 +66,7 @@ text editor.
 {
   "target_app": "apple_reminders",
   "delivery_mode": "dry_run",
+  "apple_reminders_list_id": "",
   "apple_reminders_list_name": "Groceries",
   "append_short_name": true,
   "include_on_hand_default": false,
@@ -98,3 +99,10 @@ Supported delivery modes:
 
 - `dry_run`: print what would be created without changing the target app
 - `create`: create reminders in the configured Apple Reminders list
+
+Apple Reminders lists can be targeted by `apple_reminders_list_name`, including
+lists inside Reminders folders. If multiple lists share that name, `shop` will
+prompt you to choose one and show a few existing items from each list.
+
+When `apple_reminders_list_id` is set, it is preferred over
+`apple_reminders_list_name`.

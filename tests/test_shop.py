@@ -5,7 +5,7 @@ from importlib.machinery import SourceFileLoader
 from pathlib import Path
 from unittest.mock import patch
 
-from src.delivery import DeliveryResult
+from src.delivery import DeliveryResult, DeliveryTargetOption
 
 
 SHOP_PATH: Path = Path(__file__).resolve().parents[1] / "shop"
@@ -41,3 +41,25 @@ def test_render_delivery_result_shows_dry_run_summary() -> None:
 		"Included: 2 items\n"
 		"Omitted: 1 item"
 	)
+
+
+def test_format_delivery_target_option_shows_sample_items() -> None:
+	option = DeliveryTargetOption(
+		identifier="list-1",
+		name="Test",
+		source="iCloud",
+		sample_items=["Bacon", "TP"],
+	)
+
+	assert shop_script.format_delivery_target_option(option) == "Test (Includes: Bacon, TP)"
+
+
+def test_format_delivery_target_option_handles_empty_list() -> None:
+	option = DeliveryTargetOption(
+		identifier="list-1",
+		name="Test",
+		source="iCloud",
+		sample_items=[],
+	)
+
+	assert shop_script.format_delivery_target_option(option) == "Test (list is empty)"

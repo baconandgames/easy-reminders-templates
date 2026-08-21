@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from src.config import Config, ConfigLoadError, load_config
-from src.delivery import DeliveryError, DeliveryResult, get_delivery_target
+from src.delivery import DeliveryError, DeliveryResult, DeliveryTargetOption, get_delivery_target
 from src.formatter import ColorScheme, build_shopping_list, format_number, render_shopping_list
 from src.recipes import RecipeLoadError, find_recipe_by_short_name, load_recipes
 
@@ -65,7 +65,10 @@ def main() -> int:
 	)
 	print(render_shopping_list(shopping_list, color_scheme=color_scheme, include_omitted=not include_on_hand))
 	try:
-		delivery_result: DeliveryResult = get_delivery_target(config.target_app).create_list(shopping_list, config)
+		delivery_result: DeliveryResult = get_delivery_target(
+			config.target_app,
+			target_selector=select_delivery_target,
+		).create_list(shopping_list, config)
 	except DeliveryError as error:
 		print(f"Error: {error}", file=sys.stderr)
 		return 1
@@ -151,6 +154,38 @@ def prompt_for_include_on_hand(default: bool) -> bool:
 			return False
 
 		print("Enter y or n.")
+
+
+def select_delivery_target(target_name: str, options: list[DeliveryTargetOption]) -> DeliveryTargetOption:
+	print()
+	print(f'Multiple lists with the name "{target_name}" were found. Which list would you like to add to?')
+	for index, option in enumerate(options, start=1):
+		print(f"{index}. {format_delivery_target_option(option)}")
+
+	while True:
+		selection: str = input("Select a list: ").strip()
+		if selection == "":
+			print("Enter a list number.")
+			continue
+
+		try:
+			selected_index: int = int(selection)
+		except ValueError:
+			print("Enter a list number.")
+			continue
+
+		if 1 <= selected_index <= len(options):
+			return options[selected_index - 1]
+
+		print(f"Enter a number from 1 to {len(options)}.")
+
+
+def format_delivery_target_option(option: DeliveryTargetOption) -> str:
+	if len(option.sample_items) == 0:
+		return f"{option.name} (list is empty)"
+
+	samples: str = ", ".join(option.sample_items)
+	return f"{option.name} (Includes: {samples})"
 
 
 if __name__ == "__main__":

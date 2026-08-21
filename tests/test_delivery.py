@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import json
 import subprocess
 
 from src.config import Config
-from src.delivery import AppleRemindersTarget, DeliveryError, build_apple_reminders_script, get_delivery_target
+from src.delivery import AppleRemindersTarget, DeliveryError, DeliveryTargetOption, get_delivery_target
 from src.formatter import build_shopping_list
 
 
@@ -46,15 +47,33 @@ def test_apple_reminders_target_returns_dry_run_result() -> None:
 def test_apple_reminders_target_runs_script_in_create_mode() -> None:
 	calls = []
 
-	def fake_runner(args, check, capture_output, text):
+	def fake_runner(args, input, check, capture_output, text):
 		calls.append(
 			{
 				"args": args,
+				"input": input,
 				"check": check,
 				"capture_output": capture_output,
 				"text": text,
 			}
 		)
+		if args[2] == "list-targets":
+			return subprocess.CompletedProcess(
+				args,
+				0,
+				stdout=json.dumps(
+					[
+						{
+							"id": "list-1",
+							"name": "Shared Grocery",
+							"source": "iCloud",
+							"sample_items": ["Milk"],
+						}
+					]
+				),
+				stderr="",
+			)
+		return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
 
 	recipe = {
 		"name": "Test Recipe",
@@ -74,18 +93,140 @@ def test_apple_reminders_target_runs_script_in_create_mode() -> None:
 	)
 
 	assert result.dry_run is False
+	assert len(calls) == 2
+	assert calls[0]["args"][2] == "list-targets"
+	assert calls[1]["args"][0] == "swift"
+	assert calls[1]["args"][2] == "create-reminders"
+	assert json.loads(calls[1]["input"]) == {
+		"listIdentifier": "list-1",
+		"listName": "Shared Grocery",
+		"items": ["1 Apple"],
+	}
+	assert calls[1]["check"] is True
+	assert calls[1]["capture_output"] is True
+	assert calls[1]["text"] is True
+
+
+def test_apple_reminders_target_uses_configured_list_id_without_listing_targets() -> None:
+	calls = []
+
+	def fake_runner(args, input, check, capture_output, text):
+		calls.append(
+			{
+				"args": args,
+				"input": input,
+				"check": check,
+				"capture_output": capture_output,
+				"text": text,
+			}
+		)
+		return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
+
+	recipe = {
+		"name": "Test Recipe",
+		"ingredients": [
+			{
+				"name": "Apple",
+				"quantity": 1,
+				"always_on_hand": False,
+			},
+		],
+	}
+	shopping_list = build_shopping_list(recipe, 1, include_on_hand=False)
+
+	AppleRemindersTarget(runner=fake_runner).create_list(
+		shopping_list,
+		Config(
+			delivery_mode="create",
+			apple_reminders_list_id="list-1",
+			apple_reminders_list_name="Shared Grocery",
+		),
+	)
+
 	assert len(calls) == 1
-	assert calls[0]["args"][0:2] == ["osascript", "-e"]
-	assert 'set targetList to list "Shared Grocery"' in calls[0]["args"][2]
-	assert 'make new reminder at end of reminders of targetList with properties {name:"1 Apple"}' in calls[0]["args"][2]
-	assert calls[0]["check"] is True
-	assert calls[0]["capture_output"] is True
-	assert calls[0]["text"] is True
+	assert calls[0]["args"][2] == "create-reminders"
+	assert json.loads(calls[0]["input"])["listIdentifier"] == "list-1"
+
+
+def test_apple_reminders_target_uses_selector_for_duplicate_list_names() -> None:
+	calls = []
+
+	def fake_runner(args, input, check, capture_output, text):
+		calls.append({"args": args, "input": input})
+		if args[2] == "list-targets":
+			return subprocess.CompletedProcess(
+				args,
+				0,
+				stdout=json.dumps(
+					[
+						{"id": "list-1", "name": "Test", "source": "iCloud", "sample_items": ["Bacon"]},
+						{"id": "list-2", "name": "Test", "source": "iCloud", "sample_items": []},
+						{"id": "list-3", "name": "Test", "source": "Local", "sample_items": ["TP"]},
+					]
+				),
+				stderr="",
+			)
+		return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
+
+	def selector(target_name: str, options: list[DeliveryTargetOption]) -> DeliveryTargetOption:
+		assert target_name == "Test"
+		assert len(options) == 3
+		return options[2]
+
+	recipe = {
+		"name": "Test Recipe",
+		"ingredients": [
+			{
+				"name": "Apple",
+				"quantity": 1,
+				"always_on_hand": False,
+			},
+		],
+	}
+	shopping_list = build_shopping_list(recipe, 1, include_on_hand=False)
+
+	AppleRemindersTarget(runner=fake_runner, target_selector=selector).create_list(
+		shopping_list,
+		Config(delivery_mode="create", apple_reminders_list_name="Test"),
+	)
+
+	assert json.loads(calls[1]["input"])["listIdentifier"] == "list-3"
+
+
+def test_apple_reminders_target_raises_when_duplicate_names_have_no_selector() -> None:
+	def fake_runner(args, input, check, capture_output, text):
+		return subprocess.CompletedProcess(
+			args,
+			0,
+			stdout=json.dumps(
+				[
+					{"id": "list-1", "name": "Test", "source": "iCloud", "sample_items": []},
+					{"id": "list-2", "name": "Test", "source": "iCloud", "sample_items": []},
+				]
+			),
+			stderr="",
+		)
+
+	recipe = {
+		"name": "Test Recipe",
+		"ingredients": [],
+	}
+	shopping_list = build_shopping_list(recipe, 1, include_on_hand=False)
+
+	try:
+		AppleRemindersTarget(runner=fake_runner).create_list(
+			shopping_list,
+			Config(delivery_mode="create", apple_reminders_list_name="Test"),
+		)
+	except DeliveryError as error:
+		assert str(error) == 'Multiple reminder lists named "Test" were found.'
+	else:
+		raise AssertionError("Expected DeliveryError")
 
 
 def test_apple_reminders_target_raises_delivery_error_when_script_fails() -> None:
-	def failing_runner(_args, check, capture_output, text):
-		raise subprocess.CalledProcessError(1, "osascript", stderr="No list found.")
+	def failing_runner(_args, input, check, capture_output, text):
+		raise subprocess.CalledProcessError(1, "swift", stderr="No list found.")
 
 	recipe = {
 		"name": "Test Recipe",
@@ -102,10 +243,3 @@ def test_apple_reminders_target_raises_delivery_error_when_script_fails() -> Non
 		assert str(error) == "No list found."
 	else:
 		raise AssertionError("Expected DeliveryError")
-
-
-def test_build_apple_reminders_script_quotes_names() -> None:
-	script = build_apple_reminders_script('Kid "Groceries"', ['1 "quoted" item'])
-
-	assert 'list "Kid \\"Groceries\\""' in script
-	assert 'properties {name:"1 \\"quoted\\" item"}' in script
