@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import ssl
 import tomllib
 from dataclasses import dataclass
 from importlib.metadata import PackageNotFoundError, version
@@ -8,6 +9,8 @@ from pathlib import Path
 from typing import Any, Callable
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
+
+import certifi
 
 
 PACKAGE_NAME: str = "easy-reminder-templates"
@@ -61,7 +64,7 @@ def read_project_version() -> str | None:
 
 def fetch_latest_release(
 	release_url: str = LATEST_RELEASE_URL,
-	opener: Callable[..., Any] = urlopen,
+	opener: Callable[..., Any] | None = None,
 	timeout: float = 3,
 ) -> ReleaseInfo:
 	request = Request(
@@ -72,7 +75,8 @@ def fetch_latest_release(
 		},
 	)
 	try:
-		with opener(request, timeout=timeout) as response:
+		open_url: Callable[..., Any] = opener or open_with_certifi
+		with open_url(request, timeout=timeout) as response:
 			raw_data: Any = json.loads(response.read().decode("utf-8"))
 	except (HTTPError, URLError, TimeoutError, OSError, json.JSONDecodeError) as error:
 		raise UpdateCheckError(f"Could not check GitHub releases: {error}") from error
@@ -93,6 +97,11 @@ def fetch_latest_release(
 		body=body if isinstance(body, str) else "",
 		url=html_url if isinstance(html_url, str) else "",
 	)
+
+
+def open_with_certifi(request: Request, timeout: float):
+	context = ssl.create_default_context(cafile=certifi.where())
+	return urlopen(request, timeout=timeout, context=context)
 
 
 def normalize_version(value: str) -> str:
