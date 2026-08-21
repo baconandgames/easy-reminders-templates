@@ -196,6 +196,9 @@ def main() -> int:
 	if should_show_help(sys.argv[1:]):
 		print(render_help(load_help_config()))
 		return 0
+	if should_show_version(sys.argv[1:]):
+		print(f"listkit {get_current_version()}")
+		return 0
 
 	parser: argparse.ArgumentParser = argparse.ArgumentParser(
 		prog="listkit",
@@ -331,6 +334,10 @@ def should_show_help(arguments: list[str]) -> bool:
 	return any(argument in {"-h", "--help"} for argument in arguments)
 
 
+def should_show_version(arguments: list[str]) -> bool:
+	return any(argument in {"-V", "--version"} for argument in arguments)
+
+
 def load_help_config() -> Config:
 	project_config_path: Path = get_project_root() / "config.json"
 	user_config_path: Path = get_user_data_dir() / "config.json"
@@ -400,6 +407,7 @@ def render_help(config: Config) -> str:
 		style_text("-----", colors.standard_text_color),
 		f"{style_text('listkit', config.quantity_color)} [template-short-name]",
 		f"{style_text('listkit', config.quantity_color)} config",
+		f"{style_text('listkit', config.quantity_color)} --version",
 		"",
 		style_text("Examples", colors.standard_text_color),
 		style_text("--------", colors.standard_text_color),
@@ -407,10 +415,12 @@ def render_help(config: Config) -> str:
 		f"{style_text('listkit', config.quantity_color)} chili",
 		f"{style_text('listkit', config.quantity_color)} beach",
 		f"{style_text('listkit', config.quantity_color)} config",
+		f"{style_text('listkit', config.quantity_color)} --version",
 		"",
 		style_text("Commands", colors.standard_text_color),
 		style_text("--------", colors.standard_text_color),
 		render_help_row("config", "Open settings", config.quantity_color),
+		render_help_row("--version", "Show installed version", config.quantity_color),
 		"",
 		style_text("Arguments", colors.standard_text_color),
 		style_text("---------", colors.standard_text_color),

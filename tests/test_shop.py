@@ -63,6 +63,12 @@ def test_should_show_help_detects_help_flags() -> None:
 	assert shop_script.should_show_help(["chili"]) is False
 
 
+def test_should_show_version_detects_version_flags() -> None:
+	assert shop_script.should_show_version(["--version"]) is True
+	assert shop_script.should_show_version(["-V"]) is True
+	assert shop_script.should_show_version(["chili"]) is False
+
+
 def test_render_help_uses_app_color_scheme() -> None:
 	help_text = shop_script.render_help(
 		Config(
@@ -75,6 +81,7 @@ def test_render_help_uses_app_color_scheme() -> None:
 
 	assert "\033[31mEasy Reminder Templates\033[0m" in help_text
 	assert "\033[36mlistkit\033[0m chili" in help_text
+	assert "\033[36mlistkit\033[0m --version" in help_text
 	assert "\033[36mtemplate-short-name\033[0m     Optional shortcut for a template" in help_text
 
 

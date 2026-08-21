@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
+import tomllib
+from pathlib import Path
 
-from recipe_shopper.updates import fetch_latest_release, is_newer_version, normalize_version
+from recipe_shopper.updates import fetch_latest_release, get_current_version, is_newer_version, normalize_version
 
 
 class FakeResponse:
@@ -47,3 +49,9 @@ def test_fetch_latest_release_reads_github_release_payload() -> None:
 	assert release.name == "Beta polish"
 	assert release.body == "Release notes"
 	assert release.url == "https://github.com/example/release"
+
+
+def test_get_current_version_reads_project_version() -> None:
+	project_data = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
+
+	assert get_current_version() == project_data["project"]["version"]

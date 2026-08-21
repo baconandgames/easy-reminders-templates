@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
+import tomllib
 from dataclasses import dataclass
 from importlib.metadata import PackageNotFoundError, version
+from pathlib import Path
 from typing import Any, Callable
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -26,10 +28,35 @@ class UpdateCheckError(Exception):
 
 
 def get_current_version() -> str:
+	project_version: str | None = read_project_version()
+	if project_version is not None:
+		return project_version
+
 	try:
 		return version(PACKAGE_NAME)
 	except PackageNotFoundError:
 		return "0.0.0"
+
+
+def read_project_version() -> str | None:
+	project_file: Path = Path(__file__).resolve().parents[1] / "pyproject.toml"
+	if not project_file.exists():
+		return None
+
+	try:
+		project_data: Any = tomllib.loads(project_file.read_text(encoding="utf-8"))
+	except (OSError, tomllib.TOMLDecodeError):
+		return None
+
+	project: Any = project_data.get("project")
+	if not isinstance(project, dict):
+		return None
+
+	project_version: Any = project.get("version")
+	if not isinstance(project_version, str) or project_version.strip() == "":
+		return None
+
+	return project_version
 
 
 def fetch_latest_release(
