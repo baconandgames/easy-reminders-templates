@@ -54,10 +54,10 @@ pipx install --python /usr/local/bin/python3.11 git+https://github.com/baconandg
 pipx install git+https://github.com/baconandgames/easy-reminders-templates.git
 ```
 
-Check that `shop` is available:
+Check that `listkit` is available:
 
 ```sh
-shop --help
+listkit --help
 ```
 
 To update an existing install:
@@ -71,16 +71,16 @@ pipx upgrade easy-reminder-templates
 Open the config menu first:
 
 ```sh
-shop config
+listkit config
 ```
 
 Then create a list from a template:
 
 ```sh
-shop
+listkit
 ```
 
-The first time `shop` creates Apple Reminders, macOS may ask for permission to
+The first time `listkit` creates Apple Reminders, macOS may ask for permission to
 access Reminders.
 
 ## Local Development
@@ -97,64 +97,92 @@ python3 -m venv .venv
 Run with an optional template short name:
 
 ```sh
-shop
-shop chili
+listkit
+listkit chili
 ```
 
-When no short name is provided, `shop` lists available recipes and prompts for
+When no short name is provided, `listkit` lists available templates and prompts for
 a selection.
 
-When installed outside this repository, `shop` creates user files in:
+When installed outside this repository, `listkit` creates user files in:
 
 ```text
 ~/Library/Application Support/Easy Reminder Templates/
 ```
 
-That folder contains `config.json` and `recipes.json`.
+That folder contains `config.json` and a `templates/` folder.
 
 The CLI then prompts for:
 
-- batch size, defaulting to the template's `default_batch`
-- whether to include items marked as usually on hand
+- batch size, when the template includes quantities
+- whether to include items marked as usually on hand, when relevant
 
 Interactive prompts can be cancelled with the `Abort` option, `Ctrl-C`, or `q`
 where text input is accepted.
 
-Before sending anything to the target app, `shop` shows all template items in a
+Before sending anything to the target app, `listkit` shows all template items in a
 checkbox list. Items are preselected based on the on-hand prompt, and can be
 added or removed before the final list is created.
 
 ## Templates
 
-Templates currently live in `recipes.json`.
+Templates live as individual JSON files under `templates/`.
+
+```text
+templates/
+  recipes/
+    classic-chili.json
+  lists/
+    beach-day.json
+```
+
+Recipe-style template:
 
 ```json
 {
-  "recipes": {
-    "<recipe-id>": {
-      "name": "Recipe Name",
-      "short_name": "Optional tag",
-      "default_batch": 1,
-      "ingredients": [
-        {
-          "name": "Ingredient",
-          "quantity": 1,
-          "unit": "singular unit",
-          "always_on_hand": false
-        }
-      ]
+  "schema_version": 1,
+  "type": "recipe",
+  "name": "Recipe Name",
+  "short_name": "Optional tag",
+  "default_batch": 1,
+  "items": [
+    {
+      "name": "Ingredient",
+      "quantity": 1,
+      "unit": "singular unit",
+      "always_on_hand": false
     }
-  }
+  ]
+}
+```
+
+Simple list template:
+
+```json
+{
+  "schema_version": 1,
+  "type": "list",
+  "name": "Beach Day",
+  "short_name": "Beach",
+  "items": [
+    {
+      "name": "Towels"
+    },
+    {
+      "name": "Sunscreen"
+    }
+  ]
 }
 ```
 
 Notes:
 
 - `short_name` is optional.
+- `quantity` is optional.
 - `unit` should be singular, such as `can`, `clove`, or `lb`.
-- Omit `unit` when it is not needed.
-- `always_on_hand` marks items that are normally already available.
-- Quantities are stored numerically and scaled by batch size.
+- Omit `unit` when it is not needed or when no quantity is used.
+- `always_on_hand` is optional and defaults to `false`.
+- Quantities are stored numerically and scaled by batch size when present.
 
 ## Configuration
 
@@ -196,13 +224,13 @@ Supported target app values:
 - `apple_reminders`
 
 Apple Reminders lists can be targeted by `apple_reminders_list_name`, including
-lists inside Reminders folders. `shop` prompts you to choose from available
+lists inside Reminders folders. `listkit` prompts you to choose from available
 lists, starts on the configured list name, and shows a few existing items only
 when multiple lists share the same name.
 
 When `apple_reminders_list_id` is set, it is preferred over
 `apple_reminders_list_name`.
 
-Run `shop config` to choose which Apple Reminders lists appear in the target
+Run `listkit config` to choose which Apple Reminders lists appear in the target
 list picker, edit terminal colors, and update common options. Hidden lists are stored in
 `hidden_apple_reminders_list_ids`.

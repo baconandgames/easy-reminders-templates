@@ -53,25 +53,32 @@ easy-reminder-templates/
 ├── DEVELOPMENT.md
 ├── pyproject.toml
 ├── config.json
-├── recipes.json
-├── shop
+├── listkit
 ├── bin/
 │   └── reminders-helper.swift
+├── templates/
+│   ├── recipes/
+│   │   └── classic-chili.json
+│   └── lists/
+│       └── beach-day.json
 ├── recipe_shopper/
 │   ├── __init__.py
 │   ├── cli.py
 │   ├── config.py
 │   ├── delivery.py
 │   ├── formatter.py
-│   ├── recipes.py
-│   ├── default_recipes.json
+│   ├── templates.py
+│   ├── default_templates/
+│   │   ├── recipes/
+│   │   └── lists/
 │   └── bin/
 │       └── reminders-helper.swift
 └── tests/
     ├── test_delivery.py
     ├── test_shop.py
     ├── test_config.py
-    └── test_formatter.py
+    ├── test_formatter.py
+    └── test_templates.py
 ```
 
 Only create files when they become necessary.
@@ -123,7 +130,7 @@ install path has been tested on a clean Mac.
 
 ### Update Checking
 
-Add update awareness to `shop config`, not to the normal `shop` flow.
+Add update awareness to `listkit config`, not to the normal `listkit` flow.
 
 For `pipx upgrade easy-reminder-templates` to pick up changes from GitHub, the
 package version in `pyproject.toml` must increase. Until a release process is
@@ -132,7 +139,7 @@ through `pipx upgrade`.
 
 Planned behavior:
 
-- On opening `shop config`, quietly check GitHub releases or tags.
+- On opening `listkit config`, quietly check GitHub releases or tags.
 - Cache the update check result for about a day so the config menu stays fast.
 - If a newer version exists, show the config menu item as `Check for Updates (1)`.
 - Opening that item should show the available version, release notes, and choices:
@@ -150,10 +157,9 @@ failure modes around permissions, shell environment, rollback, and support.
 
 ### Template Storage Model
 
-The current `recipes.json` file is acceptable for the first alpha and install
-test. Longer term, prefer one JSON file per template.
+Templates now use one JSON file per template.
 
-Recommended future shape:
+Current shape:
 
 ```text
 ~/Library/Application Support/Easy Reminder Templates/
@@ -177,30 +183,27 @@ Reasons for this direction:
   every possible field.
 - Migrations can run per file and create per-file backups.
 
-Each template file should include a `schema_version`. Migrations should back up
-the file before writing changes. If one migration fails, the app should report
-that template and continue loading the rest when possible.
+Each template file should include a `schema_version`. Future migrations should
+back up the file before writing changes. If one migration fails, the app should
+report that template and continue loading the rest when possible.
 
 ### Generic Template Schema
 
-Recipes are the first use case, but the internal model should move from
-recipe/ingredient language toward template/item language before adding more
-template types.
+Recipes are the first use case, but templates now support both recipe-style
+items and plain checklist items.
 
-A generic item should support list entries that do not need quantity or unit:
+A generic item supports list entries that do not need quantity or unit:
 
 ```json
 {
   "name": "Passport",
-  "quantity": null,
-  "unit": null,
   "always_on_hand": false
 }
 ```
 
-The final schema should also allow quantity and unit to be omitted entirely.
 Recipe templates can keep using quantity/unit, while packing lists or general
-checklists can use plain names.
+checklists can use plain names. `always_on_hand` defaults to `false` when
+omitted.
 
 ### Create Template from Existing Reminders List
 
@@ -210,7 +213,7 @@ template.
 Possible command:
 
 ```sh
-shop template-from-list
+listkit template-from-list
 ```
 
 Planned flow:
@@ -237,14 +240,14 @@ cached display text.
 
 Expected behavior:
 
-- When `shop config` loads the default Reminders list setting, validate the
+- When `listkit config` loads the default Reminders list setting, validate the
   stored list ID against current Reminders lists.
 - If the ID exists but the name changed, silently update the cached name.
 - If the ID is missing, fall back to matching the stored name.
 - If the name has one match, save that new ID.
 - If the name has multiple matches or no matches, prompt the user to choose or
   create a list.
-- During normal `shop` runs, still show the target list picker before sending so
+- During normal `listkit` runs, still show the target list picker before sending so
   stale config can be corrected before writing anything.
 
 For a user with no Reminders lists, prompt rather than assuming:
@@ -256,6 +259,36 @@ For a user with no Reminders lists, prompt rather than assuming:
 Do not default to the short name for new list creation. Short names are intended
 as compact tags and may not be user-facing enough.
 
+### Config Migrations Before v1.0
+
+Current alpha config changes should remain additive whenever possible. Existing
+user settings should be preserved during upgrades, and missing settings can keep
+falling back to defaults.
+
+Before a stable v1.0 release, add explicit config versioning and migrations if
+we introduce structural config changes.
+
+Migration triggers:
+
+- Renaming config keys.
+- Splitting one setting into multiple settings.
+- Combining multiple settings into one structured object.
+- Changing the meaning or accepted format of a setting.
+- Moving Apple Reminders settings into a broader multi-target app structure.
+- Changing template storage from a single file to per-template files.
+
+Recommended migration behavior:
+
+- Add a `schema_version` field to app-owned config and template files.
+- Back up each file before writing a migrated version.
+- Keep additive defaults simple: missing optional fields should be filled in
+  without forcing a migration prompt.
+- Preserve unknown fields when possible until v1.0 removes or formalizes them.
+- If a migration cannot safely infer intent, prompt the user instead of
+  guessing.
+- Document each migration in release notes so support/debugging has a paper
+  trail.
+
 ### Local Backups and Restore
 
 Add backups for local app-owned data, not full Apple Reminders restore.
@@ -263,8 +296,7 @@ Add backups for local app-owned data, not full Apple Reminders restore.
 Back up:
 
 - `config.json`
-- current `recipes.json`
-- future per-template JSON files
+- per-template JSON files
 
 Backup before:
 

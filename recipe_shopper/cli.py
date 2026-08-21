@@ -38,7 +38,13 @@ from recipe_shopper.formatter import (
 	format_number,
 	style_text,
 )
-from recipe_shopper.recipes import RecipeLoadError, find_recipe_by_short_name, load_recipes
+from recipe_shopper.templates import (
+	TemplateLoadError,
+	find_template_by_short_name,
+	load_templates,
+	template_has_on_hand_items,
+	template_uses_batch_size,
+)
 
 
 ABORT_COMMANDS: set[str] = {"q", "quit", "cancel", "abort"}
@@ -50,7 +56,7 @@ BACK_CONFIG_CHOICE: str = "__back_config__"
 BACK_CONFIG_TITLE: str = "Back to Config Menu"
 START_INSTRUCTION: str = "[↑↓ + ENTER to select | Ctrl-C to abort]"
 SELECT_INSTRUCTION: str = " "
-INGREDIENT_INSTRUCTION: str = "\n[SPACE to include/exclude ingredients | ENTER to continue | Ctrl-C to abort]\n"
+INGREDIENT_INSTRUCTION: str = "\n[SPACE to include/exclude items | ENTER to continue | Ctrl-C to abort]\n"
 CONFIG_LIST_INSTRUCTION: str = "\n[SPACE to show/hide lists | ENTER to save | Ctrl-C to abort]\n"
 COLOR_MENU_INSTRUCTION: str = "\n[ENTER to edit | ESC to return | Ctrl-C to quit]\n"
 COLOR_PICKER_CONTROLS: str = "[ENTER to save | ESC to return | Ctrl-C to quit]"
@@ -171,7 +177,7 @@ configure_questionary_checkbox_rendering()
 
 def main() -> int:
 	parser: argparse.ArgumentParser = argparse.ArgumentParser(
-		prog="shop",
+		prog="listkit",
 		description="Create Apple Reminders items from a reusable list template.",
 	)
 	parser.add_argument("short_name", nargs="?", help="template short name")
@@ -179,7 +185,7 @@ def main() -> int:
 
 	project_dir: Path = get_project_root()
 	config_path: Path = resolve_config_path(project_dir)
-	recipes_path: Path = resolve_recipes_path(project_dir)
+	templates_path: Path = resolve_templates_path(project_dir)
 
 	try:
 		config: Config = load_config(config_path)
@@ -198,8 +204,8 @@ def main() -> int:
 			return 1
 
 	try:
-		recipes: dict[str, dict[str, Any]] = load_recipes(recipes_path)
-	except RecipeLoadError as error:
+		templates: dict[str, dict[str, Any]] = load_templates(templates_path)
+	except TemplateLoadError as error:
 		print(f"Error: {error}", file=sys.stderr)
 		return 1
 
@@ -209,33 +215,38 @@ def main() -> int:
 		print(style_instruction(START_INSTRUCTION))
 		print()
 		if args.short_name is None:
-			recipe = select_recipe(recipes, prompt_style=prompt_style)
+			template = select_template(templates, prompt_style=prompt_style)
 		else:
 			try:
-				match: tuple[str, dict[str, Any]] | None = find_recipe_by_short_name(recipes, args.short_name)
-			except RecipeLoadError as error:
+				match: tuple[str, dict[str, Any]] | None = find_template_by_short_name(templates, args.short_name)
+			except TemplateLoadError as error:
 				print(f"Error: {error}", file=sys.stderr)
 				return 1
 
 			if match is None:
-				print(f'Error: no recipe found with short name "{args.short_name}".', file=sys.stderr)
+				print(f'Error: no template found with short name "{args.short_name}".', file=sys.stderr)
 				return 1
 
-			_recipe_id, recipe = match
-			print_selected_template(recipe["name"], config.selection_color)
+			_template_id, template = match
+			print_selected_template(template["name"], config.selection_color)
 
-		batch_size: float = prompt_for_batch_size(recipe, prompt_style=prompt_style)
-		include_on_hand: bool = prompt_for_include_on_hand(
-			config.include_on_hand_default,
-			prompt_style=prompt_style,
-		)
+		batch_size: float | None = None
+		if template_uses_batch_size(template):
+			batch_size = prompt_for_batch_size(template, prompt_style=prompt_style)
+
+		include_on_hand: bool = True
+		if template_has_on_hand_items(template):
+			include_on_hand = prompt_for_include_on_hand(
+				config.include_on_hand_default,
+				prompt_style=prompt_style,
+			)
 		print()
 	except ShopAbort:
 		print("Aborted.")
 		return 130
 
 	shopping_list = build_shopping_list(
-		recipe,
+		template,
 		batch_size,
 		include_on_hand,
 		append_short_name=config.append_short_name,
@@ -305,17 +316,17 @@ def resolve_config_path(project_dir: Path) -> Path:
 	return config_path
 
 
-def resolve_recipes_path(project_dir: Path) -> Path:
-	project_recipes_path: Path = project_dir / "recipes.json"
-	if project_recipes_path.exists():
-		return project_recipes_path
+def resolve_templates_path(project_dir: Path) -> Path:
+	project_templates_path: Path = project_dir / "templates"
+	if project_templates_path.exists():
+		return project_templates_path
 
-	recipes_path: Path = get_user_data_dir() / "recipes.json"
-	if not recipes_path.exists():
-		recipes_path.parent.mkdir(parents=True, exist_ok=True)
-		shutil.copyfile(Path(__file__).resolve().parent / "default_recipes.json", recipes_path)
+	user_templates_path: Path = get_user_data_dir() / "templates"
+	if not user_templates_path.exists():
+		user_templates_path.parent.mkdir(parents=True, exist_ok=True)
+		shutil.copytree(Path(__file__).resolve().parent / "default_templates", user_templates_path)
 
-	return recipes_path
+	return user_templates_path
 
 
 def render_delivery_result(result: DeliveryResult) -> str:
@@ -331,14 +342,14 @@ def render_delivery_result(result: DeliveryResult) -> str:
 	)
 
 
-def select_recipe(recipes: dict[str, dict[str, Any]], prompt_style=None) -> dict[str, Any]:
-	recipe_options: list[dict[str, Any]] = list(recipes.values())
+def select_template(templates: dict[str, dict[str, Any]], prompt_style=None) -> dict[str, Any]:
+	template_options: list[dict[str, Any]] = list(templates.values())
 	choices: list[questionary.Choice] = [
 		questionary.Choice(
-			title=recipe["name"],
-			value=recipe,
+			title=template["name"],
+			value=template,
 		)
-		for recipe in recipe_options
+		for template in template_options
 	]
 	choices.append(abort_choice())
 
@@ -347,7 +358,7 @@ def select_recipe(recipes: dict[str, dict[str, Any]], prompt_style=None) -> dict
 		choices=choices,
 		instruction=SELECT_INSTRUCTION,
 		pointer=">",
-		qmark="Select a Recipe",
+		qmark="Select a Template",
 		style=prompt_style,
 	)
 	return require_selection(ask_or_abort(selection))
@@ -508,7 +519,7 @@ def edit_options(config_path: Path, config: Config, prompt_style=None) -> Config
 					value="include_on_hand_default",
 				),
 				questionary.Choice(
-					title=f"Append Recipe Short Name: {format_bool_option(config.append_short_name)}",
+					title=f"Append Short Name: {format_bool_option(config.append_short_name)}",
 					value="append_short_name",
 				),
 				back_config_choice(),
@@ -579,7 +590,7 @@ def edit_bool_option(config: Config, setting_name: str, prompt_style=None) -> Co
 
 
 def prompt_for_batch_size(recipe: dict[str, Any], prompt_style=None) -> float:
-	default_batch: float = float(recipe["default_batch"])
+	default_batch: float = float(recipe.get("default_batch", 1))
 	default_display: str = format_number(default_batch)
 	prompt = questionary.text(
 		"",
@@ -668,7 +679,7 @@ def prompt_for_ingredient_items(shopping_list: ShoppingList, prompt_style=None) 
 		instruction=INGREDIENT_INSTRUCTION,
 		initial_choice=initial_choice,
 		pointer=">",
-		qmark="Choose Ingredients",
+		qmark="Choose Items",
 		style=prompt_style,
 	)
 	selection = ask_or_abort(selection)
@@ -679,7 +690,7 @@ def render_final_ingredient_list(shopping_list: ShoppingList, color_scheme: Colo
 	prefix_width: int = max((len(format_item_prefix(item)) for item in shopping_list.included_items), default=0)
 	line_width: int = calculate_line_width(shopping_list.included_items, prefix_width)
 	lines: list[str] = [
-		style_text("Final Ingredient List", color_scheme.standard_text_color),
+		style_text("Final List", color_scheme.standard_text_color),
 		style_text("-" * line_width, color_scheme.standard_text_color),
 	]
 	for item in shopping_list.included_items:
@@ -821,10 +832,10 @@ def style_instruction(value: str) -> str:
 def print_selected_template(template_name: str, color_name: str = Config.selection_color) -> None:
 	color: str = terminal_color_code(normalize_color(color_name, Config.selection_color))
 	if color == "":
-		print(f"Select a Recipe  {template_name}")
+		print(f"Select a Template  {template_name}")
 		return
 
-	print(f"Select a Recipe  {color}{template_name}\033[0m")
+	print(f"Select a Template  {color}{template_name}\033[0m")
 
 
 def validate_batch_size(selection: str) -> bool | str:

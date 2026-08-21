@@ -174,3 +174,30 @@ def test_render_shopping_list_colors_quantity_and_unit_together() -> None:
 		"\033[38;2;242;240;234m-------------------------\033[0m\n"
 		"\033[38;2;242;240;234m- \033[38;2;55;183;240m1.5 tsp\033[0m     Salt [Test]\033[0m"
 	)
+
+
+def test_render_shopping_list_supports_items_without_quantities() -> None:
+	template = {
+		"name": "Beach Day",
+		"short_name": "Beach",
+		"items": [
+			{
+				"name": "Towels",
+				"always_on_hand": False,
+			},
+			{
+				"name": "Sunscreen",
+				"always_on_hand": False,
+			},
+		],
+	}
+
+	shopping_list = build_shopping_list(template, None, include_on_hand=False)
+
+	assert render_shopping_list(shopping_list, color_scheme=PLAIN_COLORS) == (
+		"Beach Day\n\n"
+		"Included\n"
+		"-------------------\n"
+		"- Towels [Beach]\n"
+		"- Sunscreen [Beach]"
+	)

@@ -1,0 +1,103 @@
+{
+  "schema_version": 1,
+  "type": "recipe",
+  "name": "Classic Chili",
+  "short_name": "Chili",
+  "default_batch": 3,
+  "items": [
+    {
+      "name": "Green bell pepper",
+      "quantity": 1,
+      "always_on_hand": false
+    },
+    {
+      "name": "Yellow onion",
+      "quantity": 0.5,
+      "always_on_hand": false
+    },
+    {
+      "name": "Garlic",
+      "quantity": 2,
+      "unit": "clove",
+      "always_on_hand": true
+    },
+    {
+      "name": "Oil",
+      "quantity": 1,
+      "unit": "tbsp",
+      "always_on_hand": true
+    },
+    {
+      "name": "Chili powder",
+      "quantity": 5,
+      "unit": "tbsp",
+      "always_on_hand": true
+    },
+    {
+      "name": "Flour",
+      "quantity": 2,
+      "unit": "tbsp",
+      "always_on_hand": true
+    },
+    {
+      "name": "Coriander",
+      "quantity": 1,
+      "unit": "tsp",
+      "always_on_hand": true
+    },
+    {
+      "name": "Oregano",
+      "quantity": 1,
+      "unit": "tsp",
+      "always_on_hand": true
+    },
+    {
+      "name": "Cumin",
+      "quantity": 1,
+      "unit": "tsp",
+      "always_on_hand": true
+    },
+    {
+      "name": "Ground turkey",
+      "quantity": 1.6666667,
+      "unit": "lb",
+      "always_on_hand": false
+    },
+    {
+      "name": "Whole tomatoes",
+      "quantity": 1,
+      "unit": "28 oz can",
+      "always_on_hand": false
+    },
+    {
+      "name": "Crushed tomatoes",
+      "quantity": 1,
+      "unit": "28 oz can",
+      "always_on_hand": false
+    },
+    {
+      "name": "Sugar",
+      "quantity": 1,
+      "unit": "tbsp",
+      "always_on_hand": true
+    },
+    {
+      "name": "Salt",
+      "quantity": 1,
+      "unit": "tsp",
+      "always_on_hand": true
+    },
+    {
+      "name": "Unsweetened baking chocolate",
+      "quantity": 1,
+      "unit": "square",
+      "always_on_hand": true
+    },
+    {
+      "name": "Beans",
+      "quantity": 3,
+      "unit": "can",
+      "always_on_hand": false
+    }
+  ]
+}

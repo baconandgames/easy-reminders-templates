@@ -35,38 +35,39 @@ def test_resolve_config_path_creates_user_config(monkeypatch, tmp_path) -> None:
 	assert load_config(config_path).standard_text_color == "#f2f0ea"
 
 
-def test_resolve_recipes_path_prefers_project_recipes(tmp_path) -> None:
+def test_resolve_templates_path_prefers_project_templates(tmp_path) -> None:
 	project_dir = tmp_path / "project"
 	project_dir.mkdir()
-	project_recipes = project_dir / "recipes.json"
-	project_recipes.write_text('{"recipes": {}}', encoding="utf-8")
+	project_templates = project_dir / "templates"
+	project_templates.mkdir()
 
-	assert shop_script.resolve_recipes_path(project_dir) == project_recipes
+	assert shop_script.resolve_templates_path(project_dir) == project_templates
 
 
-def test_resolve_recipes_path_creates_user_recipes(monkeypatch, tmp_path) -> None:
+def test_resolve_templates_path_creates_user_templates(monkeypatch, tmp_path) -> None:
 	project_dir = tmp_path / "project"
 	project_dir.mkdir()
 	user_data_dir = tmp_path / "user-data"
 	monkeypatch.setattr(shop_script, "get_user_data_dir", lambda: user_data_dir)
 
-	recipes_path = shop_script.resolve_recipes_path(project_dir)
+	templates_path = shop_script.resolve_templates_path(project_dir)
 
-	assert recipes_path == user_data_dir / "recipes.json"
-	assert '"Classic Chili"' in recipes_path.read_text(encoding="utf-8")
+	assert templates_path == user_data_dir / "templates"
+	assert (templates_path / "recipes" / "classic-chili.json").exists()
+	assert (templates_path / "lists" / "beach-day.json").exists()
 
 
-def test_select_recipe_displays_recipe_names_without_short_names(monkeypatch) -> None:
-	recipe = {"name": "Classic Chili", "short_name": "Chili"}
+def test_select_template_displays_template_names_without_short_names(monkeypatch) -> None:
+	template = {"name": "Classic Chili", "short_name": "Chili"}
 	captured = {}
 
 	def fake_select(*args, **kwargs):
 		captured["choices"] = kwargs["choices"]
-		return FakePrompt(recipe)
+		return FakePrompt(template)
 
 	monkeypatch.setattr(shop_script.questionary, "select", fake_select)
 
-	assert shop_script.select_recipe({"chili": recipe}) == recipe
+	assert shop_script.select_template({"chili": template}) == template
 	assert captured["choices"][0].title == "Classic Chili"
 
 
@@ -212,7 +213,7 @@ def test_render_final_ingredient_list_excludes_recipe_title() -> None:
 	display_list = shop_script.without_item_tags(updated)
 
 	assert shop_script.render_final_ingredient_list(display_list, shop_script.ColorScheme()) == (
-		"\033[38;2;242;240;234mFinal Ingredient List\033[0m\n"
+		"\033[38;2;242;240;234mFinal List\033[0m\n"
 		"\033[38;2;242;240;234m------------------\033[0m\n"
 		"\033[38;2;242;240;234m- \033[38;2;55;183;240m2    \033[0m     Apples\033[0m\n"
 		"\033[38;2;242;240;234m- \033[38;2;55;183;240m2 tsp\033[0m     Salt\033[0m"
@@ -508,7 +509,7 @@ def test_edit_options_updates_boolean_setting_and_returns_to_options_menu(monkey
 	assert load_config(config_path).append_short_name is False
 	assert captured[0]["qmark"] == "Options"
 	assert captured[0]["instruction"] == shop_script.OPTIONS_MENU_INSTRUCTION
-	assert captured[0]["choices"][2].title == "Append Recipe Short Name: Yes"
+	assert captured[0]["choices"][2].title == "Append Short Name: Yes"
 	assert captured[1]["qmark"] == "Append Short Name"
 	assert captured[1]["default"].value is True
 	assert captured[2]["qmark"] == "Options"
@@ -564,7 +565,7 @@ def test_format_option_values() -> None:
 def test_print_selected_template_shows_recipe_selection(capsys) -> None:
 	shop_script.print_selected_template("Classic Chili")
 
-	assert capsys.readouterr().out == "Select a Recipe  \033[38;2;255;75;31mClassic Chili\033[0m\n"
+	assert capsys.readouterr().out == "Select a Template  \033[38;2;255;75;31mClassic Chili\033[0m\n"
 
 
 def test_format_omitted_list_instruction_pluralizes_lists() -> None:

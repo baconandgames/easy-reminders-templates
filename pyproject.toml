@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "easy-reminder-templates"
-version = "0.1.2"
+version = "0.1.3"
 description = "Create Apple Reminders items from reusable list templates."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -13,13 +13,14 @@ dependencies = [
 ]
 
 [project.scripts]
-shop = "recipe_shopper.cli:main"
+listkit = "recipe_shopper.cli:main"
 
 [tool.setuptools]
 packages = ["recipe_shopper"]
 
 [tool.setuptools.package-data]
 recipe_shopper = [
-	"default_recipes.json",
+	"default_templates/recipes/*.json",
+	"default_templates/lists/*.json",
 	"bin/reminders-helper.swift",
 ]

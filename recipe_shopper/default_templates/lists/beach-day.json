@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "type": "list",
+  "name": "Beach Day",
+  "short_name": "Beach",
+  "items": [
+    {
+      "name": "Towels"
+    },
+    {
+      "name": "Sunscreen"
+    },
+    {
+      "name": "Water bottles"
+    },
+    {
+      "name": "Snacks"
+    },
+    {
+      "name": "Sunglasses",
+      "always_on_hand": true
+    }
+  ]
+}
