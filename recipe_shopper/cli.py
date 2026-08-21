@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import os
 import shutil
+import subprocess
 import sys
 from collections import Counter
 from dataclasses import dataclass, replace
@@ -570,8 +571,8 @@ def handle_update_check(
 	print()
 	print(render_update_changelog(update_status.current_version, release))
 	choices: list[questionary.Choice] = [
-		questionary.Choice(title="Show Update Command", value="show_command"),
-		questionary.Choice(title=f"Skip {release.version}", value="skip_update"),
+		questionary.Choice(title=f"Update to v{release.version}", value="show_command"),
+		questionary.Choice(title=f"Skip v{release.version}", value="skip_update"),
 		back_config_choice(),
 	]
 	selection = questionary.select(
@@ -589,8 +590,7 @@ def handle_update_check(
 
 	if action == "show_command":
 		print()
-		print("Update command:")
-		print(UPDATE_COMMAND)
+		print(format_update_command_message(copy_update_command_to_clipboard()))
 		return config
 
 	config = replace(config, skipped_update_version=release.version)
@@ -598,6 +598,40 @@ def handle_update_check(
 	print()
 	print(f"Skipped {release.version}")
 	return config
+
+
+def copy_update_command_to_clipboard() -> bool:
+	if sys.platform != "darwin":
+		return False
+
+	try:
+		subprocess.run(
+			["pbcopy"],
+			input=UPDATE_COMMAND,
+			text=True,
+			check=True,
+			stdout=subprocess.DEVNULL,
+			stderr=subprocess.DEVNULL,
+		)
+	except (OSError, subprocess.CalledProcessError):
+		return False
+
+	return True
+
+
+def format_update_command_message(copied_to_clipboard: bool) -> str:
+	lines: list[str] = [
+		"Update command:",
+		UPDATE_COMMAND,
+		"",
+	]
+	if copied_to_clipboard:
+		lines.append("The update command has been copied to your clipboard.")
+		lines.append("Exit listkit, paste it into Terminal, and press Enter.")
+	else:
+		lines.append("Exit listkit, paste or type this command into Terminal, and press Enter.")
+
+	return "\n".join(lines)
 
 
 def render_update_changelog(current_version: str, release: ReleaseInfo) -> str:

@@ -512,6 +512,47 @@ def test_handle_update_check_can_skip_release(monkeypatch, tmp_path) -> None:
 	assert load_config(config_path).skipped_update_version == "0.1.5"
 
 
+def test_handle_update_check_labels_update_action(monkeypatch, tmp_path) -> None:
+	config_path = tmp_path / "config.json"
+	release = shop_script.ReleaseInfo(
+		version="0.1.8",
+		name="Beta polish",
+		body="Release notes",
+		url="https://github.com/example/release",
+	)
+	update_status = shop_script.UpdateStatus(current_version="0.1.7", latest_release=release)
+	captured = {}
+
+	def fake_select(*args, **kwargs):
+		captured["choices"] = kwargs["choices"]
+		return FakePrompt(shop_script.BACK_CONFIG_CHOICE)
+
+	monkeypatch.setattr(shop_script.questionary, "select", fake_select)
+
+	assert shop_script.handle_update_check(config_path, Config(), update_status) == Config()
+	assert captured["choices"][0].title == "Update to v0.1.8"
+	assert captured["choices"][1].title == "Skip v0.1.8"
+
+
+def test_format_update_command_message_notes_clipboard_copy() -> None:
+	assert shop_script.format_update_command_message(copied_to_clipboard=True) == (
+		"Update command:\n"
+		"pipx upgrade easy-reminder-templates\n"
+		"\n"
+		"The update command has been copied to your clipboard.\n"
+		"Exit listkit, paste it into Terminal, and press Enter."
+	)
+
+
+def test_format_update_command_message_falls_back_without_clipboard() -> None:
+	assert shop_script.format_update_command_message(copied_to_clipboard=False) == (
+		"Update command:\n"
+		"pipx upgrade easy-reminder-templates\n"
+		"\n"
+		"Exit listkit, paste or type this command into Terminal, and press Enter."
+	)
+
+
 def test_render_update_changelog_includes_release_notes() -> None:
 	release = shop_script.ReleaseInfo(
 		version="0.1.5",
