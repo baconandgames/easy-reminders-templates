@@ -28,8 +28,8 @@ from src.recipes import RecipeLoadError, find_recipe_by_short_name, load_recipes
 
 ABORT_COMMANDS: set[str] = {"q", "quit", "cancel", "abort"}
 ABORT_CHOICE: str = "__abort__"
-SELECT_INSTRUCTION: str = "\n [↑↓ + ENTER to select | Ctrl-C to abort]\n"
-TEXT_INSTRUCTION: str = "\n [ENTER to accept | edit value | Ctrl-C to abort]\n"
+START_INSTRUCTION: str = "[↑↓ + ENTER to select | Ctrl-C to abort]"
+SELECT_INSTRUCTION: str = " "
 TRUNCATED_SAMPLE_LENGTH: int = 11
 PROMPT_COLORS: dict[str, str] = {
 	"default": "",
@@ -74,6 +74,8 @@ def main() -> int:
 	try:
 		prompt_style = build_prompt_style(config.quantity_color)
 		print()
+		print(START_INSTRUCTION)
+		print()
 		if args.short_name is None:
 			recipe = select_recipe(recipes, prompt_style=prompt_style)
 		else:
@@ -94,6 +96,7 @@ def main() -> int:
 			config.include_on_hand_default,
 			prompt_style=prompt_style,
 		)
+		print()
 	except ShopAbort:
 		print("Aborted.")
 		return 130
@@ -175,7 +178,6 @@ def prompt_for_batch_size(recipe: dict[str, Any], prompt_style=None) -> float:
 		"",
 		default=default_display,
 		validate=validate_batch_size,
-		instruction=TEXT_INSTRUCTION,
 		qmark="Batch Size",
 		style=prompt_style,
 	)
@@ -266,10 +268,10 @@ def build_prompt_style(color_name: str):
 
 	return questionary.Style.from_dict(
 		{
-			"pointer": f"{color} bold",
-			"highlighted": f"{color} bold noreverse",
+			"pointer": f"{color} noinherit",
+			"highlighted": f"{color} noreverse noinherit",
 			"selected": "noreverse",
-			"answer": "",
+			"answer": "ansiyellow noinherit",
 			"instruction": "ansibrightblack",
 			"qmark": "bold",
 			"question": "bold",
