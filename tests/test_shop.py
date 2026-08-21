@@ -94,10 +94,11 @@ def test_format_delivery_target_option_shows_sample_items() -> None:
 		identifier="list-1",
 		name="Test",
 		source="iCloud",
-		sample_items=["Bacon", "TP"],
+		item_count=6,
+		sample_items=["3 28 oz cans Whole tomatoes", "5 lb Ground turkey", "TP"],
 	)
 
-	assert shop_script.format_delivery_target_option(option) == "Test (Includes: Bacon, TP)"
+	assert shop_script.format_delivery_target_option(option) == "Test (6) - 3 28 oz can..., 5 lb Ground..., TP"
 
 
 def test_format_delivery_target_option_handles_empty_list() -> None:
@@ -105,7 +106,8 @@ def test_format_delivery_target_option_handles_empty_list() -> None:
 		identifier="list-1",
 		name="Test",
 		source="iCloud",
+		item_count=0,
 		sample_items=[],
 	)
 
-	assert shop_script.format_delivery_target_option(option) == "Test (list is empty)"
+	assert shop_script.format_delivery_target_option(option) == "Test (0)"

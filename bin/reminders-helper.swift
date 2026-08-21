@@ -11,12 +11,14 @@ struct ReminderTarget: Encodable {
 	let id: String
 	let name: String
 	let source: String
+	let itemCount: Int
 	let sampleItems: [String]
 
 	enum CodingKeys: String, CodingKey {
 		case id
 		case name
 		case source
+		case itemCount = "item_count"
 		case sampleItems = "sample_items"
 	}
 }
@@ -81,7 +83,7 @@ func listReminders(in store: EKEventStore) {
 	}
 }
 
-func sampleReminderTitles(in store: EKEventStore, calendar: EKCalendar, limit: Int = 3) -> [String] {
+func incompleteReminderTitles(in store: EKEventStore, calendar: EKCalendar) -> [String] {
 	let semaphore = DispatchSemaphore(value: 0)
 	let predicate = store.predicateForIncompleteReminders(
 		withDueDateStarting: nil,
@@ -92,7 +94,6 @@ func sampleReminderTitles(in store: EKEventStore, calendar: EKCalendar, limit: I
 
 	store.fetchReminders(matching: predicate) { reminders in
 		titles = (reminders ?? [])
-			.prefix(limit)
 			.map { $0.title ?? "" }
 			.filter { !$0.isEmpty }
 		semaphore.signal()
@@ -104,11 +105,13 @@ func sampleReminderTitles(in store: EKEventStore, calendar: EKCalendar, limit: I
 
 func listTargets(in store: EKEventStore) {
 	let targets = reminderCalendars(in: store).map { calendar in
-		ReminderTarget(
+		let titles = incompleteReminderTitles(in: store, calendar: calendar)
+		return ReminderTarget(
 			id: calendar.calendarIdentifier,
 			name: calendar.title,
 			source: calendar.source.title,
-			sampleItems: sampleReminderTitles(in: store, calendar: calendar)
+			itemCount: titles.count,
+			sampleItems: Array(titles.prefix(3))
 		)
 	}
 

@@ -67,6 +67,7 @@ def test_apple_reminders_target_runs_script_in_create_mode() -> None:
 							"id": "list-1",
 							"name": "Shared Grocery",
 							"source": "iCloud",
+							"item_count": 1,
 							"sample_items": ["Milk"],
 						}
 					]
@@ -159,9 +160,9 @@ def test_apple_reminders_target_uses_selector_for_duplicate_list_names() -> None
 				0,
 				stdout=json.dumps(
 					[
-						{"id": "list-1", "name": "Test", "source": "iCloud", "sample_items": ["Bacon"]},
-						{"id": "list-2", "name": "Test", "source": "iCloud", "sample_items": []},
-						{"id": "list-3", "name": "Test", "source": "Local", "sample_items": ["TP"]},
+						{"id": "list-1", "name": "Test", "source": "iCloud", "item_count": 1, "sample_items": ["Bacon"]},
+						{"id": "list-2", "name": "Test", "source": "iCloud", "item_count": 0, "sample_items": []},
+						{"id": "list-3", "name": "Test", "source": "Local", "item_count": 1, "sample_items": ["TP"]},
 					]
 				),
 				stderr="",
@@ -200,8 +201,8 @@ def test_apple_reminders_target_raises_when_duplicate_names_have_no_selector() -
 			0,
 			stdout=json.dumps(
 				[
-					{"id": "list-1", "name": "Test", "source": "iCloud", "sample_items": []},
-					{"id": "list-2", "name": "Test", "source": "iCloud", "sample_items": []},
+					{"id": "list-1", "name": "Test", "source": "iCloud", "item_count": 0, "sample_items": []},
+					{"id": "list-2", "name": "Test", "source": "iCloud", "item_count": 0, "sample_items": []},
 				]
 			),
 			stderr="",

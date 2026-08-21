@@ -24,6 +24,7 @@ class DeliveryTargetOption:
 	identifier: str
 	name: str
 	source: str
+	item_count: int
 	sample_items: list[str]
 
 
@@ -88,6 +89,7 @@ class AppleRemindersTarget:
 				identifier=str(target["id"]),
 				name=str(target["name"]),
 				source=str(target["source"]),
+				item_count=int(target["item_count"]),
 				sample_items=[str(item) for item in target.get("sample_items", [])],
 			)
 			for target in targets

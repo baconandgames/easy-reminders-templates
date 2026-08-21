@@ -28,8 +28,9 @@ from src.recipes import RecipeLoadError, find_recipe_by_short_name, load_recipes
 
 ABORT_COMMANDS: set[str] = {"q", "quit", "cancel", "abort"}
 ABORT_CHOICE: str = "__abort__"
-SELECT_INSTRUCTION: str = "\n[ ↑↓ and ENTER to select | Ctrl-C to abort]\n"
-TEXT_INSTRUCTION: str = "\n[ ENTER for default | q or Ctrl-C to abort]\n"
+SELECT_INSTRUCTION: str = "\n [↑↓ + ENTER to select | Ctrl-C to abort]\n"
+TEXT_INSTRUCTION: str = "\n [ENTER for default | q or Ctrl-C to abort]\n"
+TRUNCATED_SAMPLE_LENGTH: int = 11
 PROMPT_COLORS: dict[str, str] = {
 	"default": "",
 	"black": "ansiblack",
@@ -227,10 +228,17 @@ def select_delivery_target(
 
 def format_delivery_target_option(option: DeliveryTargetOption) -> str:
 	if len(option.sample_items) == 0:
-		return f"{option.name} (list is empty)"
+		return f"{option.name} ({option.item_count})"
 
-	samples: str = ", ".join(option.sample_items)
-	return f"{option.name} (Includes: {samples})"
+	samples: str = ", ".join(truncate_sample_item(item) for item in option.sample_items[:3])
+	return f"{option.name} ({option.item_count}) - {samples}"
+
+
+def truncate_sample_item(item: str) -> str:
+	if len(item) <= TRUNCATED_SAMPLE_LENGTH:
+		return item
+
+	return f"{item[:TRUNCATED_SAMPLE_LENGTH]}..."
 
 
 def validate_batch_size(selection: str) -> bool | str:
@@ -261,8 +269,8 @@ def build_prompt_style(color_name: str):
 		{
 			"pointer": f"{color} bold",
 			"highlighted": f"{color} bold",
-			"selected": color,
-			"answer": color,
+			"selected": "",
+			"answer": "",
 			"instruction": "ansibrightblack",
 			"question": "bold",
 		}
@@ -278,9 +286,12 @@ def require_selection(selection):
 
 def ask_or_abort(prompt):
 	try:
-		return prompt.ask()
+		selection = prompt.ask()
 	except (KeyboardInterrupt, EOFError) as error:
 		raise ShopAbort() from error
+
+	print()
+	return selection
 
 
 if __name__ == "__main__":
