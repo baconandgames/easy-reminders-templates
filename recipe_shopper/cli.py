@@ -176,9 +176,14 @@ configure_questionary_checkbox_rendering()
 
 
 def main() -> int:
+	if should_show_help(sys.argv[1:]):
+		print(render_help(load_help_config()))
+		return 0
+
 	parser: argparse.ArgumentParser = argparse.ArgumentParser(
 		prog="listkit",
 		description="Create Apple Reminders items from a reusable list template.",
+		add_help=False,
 	)
 	parser.add_argument("short_name", nargs="?", help="template short name")
 	args: argparse.Namespace = parser.parse_args()
@@ -303,6 +308,25 @@ def get_user_data_dir() -> Path:
 	return Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "easy-reminder-templates"
 
 
+def should_show_help(arguments: list[str]) -> bool:
+	return any(argument in {"-h", "--help"} for argument in arguments)
+
+
+def load_help_config() -> Config:
+	project_config_path: Path = get_project_root() / "config.json"
+	user_config_path: Path = get_user_data_dir() / "config.json"
+	for config_path in (project_config_path, user_config_path):
+		if not config_path.exists():
+			continue
+
+		try:
+			return load_config(config_path)
+		except ConfigLoadError:
+			return Config()
+
+	return Config()
+
+
 def resolve_config_path(project_dir: Path) -> Path:
 	project_config_path: Path = project_dir / "config.json"
 	if project_config_path.exists():
@@ -340,6 +364,45 @@ def render_delivery_result(result: DeliveryResult) -> str:
 			f"Omitted: {len(result.omitted_items)} {omitted_label}",
 		]
 	)
+
+
+def render_help(config: Config) -> str:
+	colors = ColorScheme(
+		standard_text_color=config.standard_text_color,
+		quantity_color=config.quantity_color,
+		omitted_ingredient_color=config.omitted_ingredient_color,
+	)
+	lines: list[str] = [
+		style_text(APP_NAME, config.selection_color),
+		"",
+		style_instruction("Create Apple Reminders items from reusable list templates."),
+		"",
+		style_text("Usage", colors.standard_text_color),
+		style_text("-----", colors.standard_text_color),
+		f"{style_text('listkit', config.quantity_color)} [template-short-name]",
+		f"{style_text('listkit', config.quantity_color)} config",
+		"",
+		style_text("Examples", colors.standard_text_color),
+		style_text("--------", colors.standard_text_color),
+		f"{style_text('listkit', config.quantity_color)}",
+		f"{style_text('listkit', config.quantity_color)} chili",
+		f"{style_text('listkit', config.quantity_color)} beach",
+		f"{style_text('listkit', config.quantity_color)} config",
+		"",
+		style_text("Commands", colors.standard_text_color),
+		style_text("--------", colors.standard_text_color),
+		render_help_row("config", "Open settings", config.quantity_color),
+		"",
+		style_text("Arguments", colors.standard_text_color),
+		style_text("---------", colors.standard_text_color),
+		render_help_row("template-short-name", "Optional shortcut for a template", config.quantity_color),
+	]
+	return "\n".join(lines)
+
+
+def render_help_row(label: str, description: str, color_name: str) -> str:
+	padding: str = " " * max(2, 24 - len(label))
+	return f"{style_text(label, color_name)}{padding}{description}"
 
 
 def select_template(templates: dict[str, dict[str, Any]], prompt_style=None) -> dict[str, Any]:

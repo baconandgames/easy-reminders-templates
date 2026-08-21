@@ -57,6 +57,27 @@ def test_resolve_templates_path_creates_user_templates(monkeypatch, tmp_path) ->
 	assert (templates_path / "lists" / "beach-day.json").exists()
 
 
+def test_should_show_help_detects_help_flags() -> None:
+	assert shop_script.should_show_help(["--help"]) is True
+	assert shop_script.should_show_help(["-h"]) is True
+	assert shop_script.should_show_help(["chili"]) is False
+
+
+def test_render_help_uses_app_color_scheme() -> None:
+	help_text = shop_script.render_help(
+		Config(
+			standard_text_color="white",
+			quantity_color="cyan",
+			selection_color="red",
+			omitted_ingredient_color="grey",
+		)
+	)
+
+	assert "\033[31mEasy Reminder Templates\033[0m" in help_text
+	assert "\033[36mlistkit\033[0m chili" in help_text
+	assert "\033[36mtemplate-short-name\033[0m     Optional shortcut for a template" in help_text
+
+
 def test_select_template_displays_template_names_without_short_names(monkeypatch) -> None:
 	template = {"name": "Classic Chili", "short_name": "Chili"}
 	captured = {}
