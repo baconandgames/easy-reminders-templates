@@ -7,13 +7,11 @@ from typing import Any
 
 
 SUPPORTED_TARGET_APPS: set[str] = {"apple_reminders"}
-SUPPORTED_DELIVERY_MODES: set[str] = {"dry_run", "create"}
 
 
 @dataclass(frozen=True)
 class Config:
 	target_app: str = "apple_reminders"
-	delivery_mode: str = "dry_run"
 	apple_reminders_list_id: str = ""
 	apple_reminders_list_name: str = "Groceries"
 	hidden_apple_reminders_list_ids: list[str] = field(default_factory=list)
@@ -41,7 +39,6 @@ def load_config(path: Path) -> Config:
 		raise ConfigLoadError("Config file must contain a JSON object.")
 
 	target_app: str = _read_target_app(raw_data, "target_app", Config.target_app)
-	delivery_mode: str = _read_delivery_mode(raw_data, "delivery_mode", Config.delivery_mode)
 	apple_reminders_list_id: str = _read_optional_string(
 		raw_data,
 		"apple_reminders_list_id",
@@ -69,7 +66,6 @@ def load_config(path: Path) -> Config:
 
 	return Config(
 		target_app=target_app,
-		delivery_mode=delivery_mode,
 		apple_reminders_list_id=apple_reminders_list_id,
 		apple_reminders_list_name=apple_reminders_list_name,
 		hidden_apple_reminders_list_ids=hidden_apple_reminders_list_ids,
@@ -84,7 +80,6 @@ def load_config(path: Path) -> Config:
 def save_config(path: Path, config: Config) -> None:
 	data: dict[str, Any] = {
 		"target_app": config.target_app,
-		"delivery_mode": config.delivery_mode,
 		"apple_reminders_list_id": config.apple_reminders_list_id,
 		"apple_reminders_list_name": config.apple_reminders_list_name,
 		"hidden_apple_reminders_list_ids": config.hidden_apple_reminders_list_ids,
@@ -140,14 +135,6 @@ def _read_target_app(raw_data: dict[str, Any], key: str, default: str) -> str:
 	value: str = _read_string(raw_data, key, default)
 	if value not in SUPPORTED_TARGET_APPS:
 		raise ConfigLoadError(f'Config value "{key}" has unsupported target "{value}".')
-
-	return value
-
-
-def _read_delivery_mode(raw_data: dict[str, Any], key: str, default: str) -> str:
-	value: str = _read_string(raw_data, key, default)
-	if value not in SUPPORTED_DELIVERY_MODES:
-		raise ConfigLoadError(f'Config value "{key}" has unsupported mode "{value}".')
 
 	return value
 

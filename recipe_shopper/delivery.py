@@ -18,7 +18,6 @@ class DeliveryResult:
 	target_name: str
 	created_items: list[str]
 	omitted_items: list[str]
-	dry_run: bool
 
 
 @dataclass(frozen=True)
@@ -54,18 +53,19 @@ class AppleRemindersTarget:
 	def create_list(self, shopping_list: ShoppingList, config: Config) -> DeliveryResult:
 		created_items: list[str] = [format_delivery_item(item) for item in shopping_list.included_items]
 		omitted_items: list[str] = [format_delivery_item(item) for item in shopping_list.omitted_items]
-		selected_target: DeliveryTargetOption | None = None
-
-		if config.delivery_mode == "create":
-			selected_target = self._resolve_list_target(config)
-			self._run_helper(config, created_items, selected_target.identifier)
+		selected_target: DeliveryTargetOption = self._resolve_list_target(config)
+		self._run_helper(
+			created_items,
+			selected_target.identifier,
+			selected_target.name,
+			shopping_list.recipe_url,
+		)
 
 		return DeliveryResult(
 			target_app=self.target_app,
-			target_name=f"{self.target_name}: {selected_target.name if selected_target else config.apple_reminders_list_name}",
+			target_name=f"{self.target_name}: {selected_target.name}",
 			created_items=created_items,
 			omitted_items=omitted_items,
-			dry_run=config.delivery_mode == "dry_run",
 		)
 
 	def list_targets(self) -> list[DeliveryTargetOption]:
@@ -130,13 +130,20 @@ class AppleRemindersTarget:
 
 		raise DeliveryError(f'Multiple reminder lists named "{config.apple_reminders_list_name}" were found.')
 
-	def _run_helper(self, config: Config, created_items: list[str], list_identifier: str | None) -> None:
+	def _run_helper(
+		self,
+		created_items: list[str],
+		list_identifier: str | None,
+		list_name: str,
+		item_url: str | None,
+	) -> None:
 		helper_path: Path = get_reminders_helper_path()
 		payload: str = json.dumps(
 			{
 				"listIdentifier": list_identifier,
-				"listName": config.apple_reminders_list_name,
+				"listName": list_name,
 				"items": created_items,
+				"url": item_url,
 			}
 		)
 		try:

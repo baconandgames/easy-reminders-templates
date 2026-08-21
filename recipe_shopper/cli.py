@@ -230,6 +230,7 @@ def main() -> int:
 				return 1
 
 			_recipe_id, recipe = match
+			print_selected_template(recipe["name"])
 
 		batch_size: float = prompt_for_batch_size(recipe, prompt_style=prompt_style)
 		include_on_hand: bool = prompt_for_include_on_hand(
@@ -326,13 +327,12 @@ def resolve_recipes_path(project_dir: Path) -> Path:
 
 
 def render_delivery_result(result: DeliveryResult) -> str:
-	status: str = "Dry run" if result.dry_run else "Created"
 	item_label: str = "item" if len(result.created_items) == 1 else "items"
 	omitted_label: str = "item" if len(result.omitted_items) == 1 else "items"
 
 	return "\n".join(
 		[
-			f"{status}: {result.target_name}",
+			f"Created: {result.target_name}",
 			f"Included: {len(result.created_items)} {item_label}",
 			f"Omitted: {len(result.omitted_items)} {omitted_label}",
 		]
@@ -509,10 +509,6 @@ def edit_options(config_path: Path, config: Config, prompt_style=None) -> Config
 					title=f"Append Recipe Short Name: {format_bool_option(config.append_short_name)}",
 					value="append_short_name",
 				),
-				questionary.Choice(
-					title=f"Delivery Mode: {format_delivery_mode(config.delivery_mode)}",
-					value="delivery_mode",
-				),
 				back_config_choice(),
 			],
 			instruction=OPTIONS_MENU_INSTRUCTION,
@@ -529,8 +525,6 @@ def edit_options(config_path: Path, config: Config, prompt_style=None) -> Config
 			config = edit_default_reminders_list(config, prompt_style=prompt_style)
 		elif setting_name in {"include_on_hand_default", "append_short_name"}:
 			config = edit_bool_option(config, setting_name, prompt_style=prompt_style)
-		elif setting_name == "delivery_mode":
-			config = edit_delivery_mode(config, prompt_style=prompt_style)
 
 		save_config(config_path, config)
 		print()
@@ -580,29 +574,6 @@ def edit_bool_option(config: Config, setting_name: str, prompt_style=None) -> Co
 		return config
 
 	return replace(config, **{setting_name: value})
-
-
-def edit_delivery_mode(config: Config, prompt_style=None) -> Config:
-	choices: list[questionary.Choice] = [
-		questionary.Choice(title="Dry Run", value="dry_run"),
-		questionary.Choice(title="Create", value="create"),
-	]
-	default_choice: questionary.Choice = next(choice for choice in choices if choice.value == config.delivery_mode)
-	selection = questionary.select(
-		"",
-		choices=choices,
-		default=default_choice,
-		instruction=SELECT_INSTRUCTION,
-		pointer=">",
-		qmark="Delivery Mode",
-		style=prompt_style,
-	)
-	bind_escape_value(selection, BACK_CONFIG_CHOICE)
-	mode = require_config_selection(ask_or_abort(selection))
-	if mode == BACK_CONFIG_CHOICE:
-		return config
-
-	return replace(config, delivery_mode=mode)
 
 
 def prompt_for_batch_size(recipe: dict[str, Any], prompt_style=None) -> float:
@@ -715,6 +686,7 @@ def without_item_tags(shopping_list: ShoppingList) -> ShoppingList:
 	return ShoppingList(
 		recipe_name=shopping_list.recipe_name,
 		batch_size=shopping_list.batch_size,
+		recipe_url=shopping_list.recipe_url,
 		items=[replace(item, tag=None) for item in shopping_list.items],
 		included_items=[replace(item, tag=None) for item in shopping_list.included_items],
 		omitted_items=[replace(item, tag=None) for item in shopping_list.omitted_items],
@@ -734,6 +706,7 @@ def apply_selected_ingredients(
 	return ShoppingList(
 		recipe_name=shopping_list.recipe_name,
 		batch_size=shopping_list.batch_size,
+		recipe_url=shopping_list.recipe_url,
 		items=items,
 		included_items=[item for item in items if not item.omitted],
 		omitted_items=[item for item in items if item.omitted],
@@ -821,16 +794,16 @@ def format_bool_option(value: bool) -> str:
 	return "Yes" if value else "No"
 
 
-def format_delivery_mode(value: str) -> str:
-	return "Dry Run" if value == "dry_run" else "Create"
-
-
 def format_color_setting_instruction(setting_name: str) -> str:
 	return f"\n{COLOR_SETTING_INSTRUCTIONS[setting_name]}\n{COLOR_PICKER_CONTROLS}\n"
 
 
 def style_instruction(value: str) -> str:
 	return f"\033[90m{value}\033[0m"
+
+
+def print_selected_template(template_name: str) -> None:
+	print(f"Select a Recipe  \033[33m{template_name}\033[0m")
 
 
 def validate_batch_size(selection: str) -> bool | str:

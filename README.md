@@ -152,7 +152,6 @@ text editor.
 ```json
 {
   "target_app": "apple_reminders",
-  "delivery_mode": "dry_run",
   "apple_reminders_list_id": "",
   "apple_reminders_list_name": "Groceries",
   "hidden_apple_reminders_list_ids": [],
@@ -181,11 +180,6 @@ Invalid config values raise a clear error when `shop` runs.
 Supported target app values:
 
 - `apple_reminders`
-
-Supported delivery modes:
-
-- `dry_run`: print what would be created without changing the target app
-- `create`: create reminders in the configured Apple Reminders list
 
 Apple Reminders lists can be targeted by `apple_reminders_list_name`, including
 lists inside Reminders folders. `shop` prompts you to choose from available

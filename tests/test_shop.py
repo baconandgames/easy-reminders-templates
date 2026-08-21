@@ -493,21 +493,6 @@ def test_edit_options_updates_boolean_setting_and_returns_to_options_menu(monkey
 	assert captured[2]["qmark"] == "Options"
 
 
-def test_edit_options_updates_delivery_mode(monkeypatch, tmp_path) -> None:
-	config_path = tmp_path / "config.json"
-	results = iter(["delivery_mode", "dry_run", shop_script.BACK_CONFIG_CHOICE])
-
-	def fake_select(*args, **kwargs):
-		return FakePrompt(next(results))
-
-	monkeypatch.setattr(shop_script.questionary, "select", fake_select)
-
-	config = shop_script.edit_options(config_path, Config(delivery_mode="create"))
-
-	assert config.delivery_mode == "dry_run"
-	assert load_config(config_path).delivery_mode == "dry_run"
-
-
 def test_edit_default_reminders_list_updates_name_and_id(monkeypatch) -> None:
 	options = [
 		DeliveryTargetOption(
@@ -553,8 +538,12 @@ def test_edit_default_reminders_list_updates_name_and_id(monkeypatch) -> None:
 def test_format_option_values() -> None:
 	assert shop_script.format_bool_option(True) == "Yes"
 	assert shop_script.format_bool_option(False) == "No"
-	assert shop_script.format_delivery_mode("dry_run") == "Dry Run"
-	assert shop_script.format_delivery_mode("create") == "Create"
+
+
+def test_print_selected_template_shows_recipe_selection(capsys) -> None:
+	shop_script.print_selected_template("Classic Chili")
+
+	assert capsys.readouterr().out == "Select a Recipe  \033[33mClassic Chili\033[0m\n"
 
 
 def test_format_omitted_list_instruction_pluralizes_lists() -> None:
@@ -563,17 +552,16 @@ def test_format_omitted_list_instruction_pluralizes_lists() -> None:
 	assert shop_script.format_omitted_list_instruction(2) == "2 lists omitted per config.json"
 
 
-def test_render_delivery_result_shows_dry_run_summary() -> None:
+def test_render_delivery_result_shows_creation_summary() -> None:
 	result = DeliveryResult(
 		target_app="apple_reminders",
 		target_name="Apple Reminders: Groceries",
 		created_items=["5 lb Ground turkey", "9 cans Beans"],
 		omitted_items=["3 tsp Salt"],
-		dry_run=True,
 	)
 
 	assert shop_script.render_delivery_result(result) == (
-		"Dry run: Apple Reminders: Groceries\n"
+		"Created: Apple Reminders: Groceries\n"
 		"Included: 2 items\n"
 		"Omitted: 1 item"
 	)

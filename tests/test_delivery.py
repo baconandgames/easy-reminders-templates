@@ -14,37 +14,7 @@ def test_get_delivery_target_returns_apple_reminders_target() -> None:
 	assert isinstance(target, AppleRemindersTarget)
 
 
-def test_apple_reminders_target_returns_dry_run_result() -> None:
-	recipe = {
-		"name": "Test Recipe",
-		"ingredients": [
-			{
-				"name": "Apple",
-				"quantity": 1,
-				"always_on_hand": False,
-			},
-			{
-				"name": "Salt",
-				"quantity": 1,
-				"unit": "tsp",
-				"always_on_hand": True,
-			},
-		],
-	}
-	shopping_list = build_shopping_list(recipe, 1, include_on_hand=False)
-	result = AppleRemindersTarget().create_list(
-		shopping_list,
-		Config(apple_reminders_list_name="Shared Grocery"),
-	)
-
-	assert result.target_app == "apple_reminders"
-	assert result.target_name == "Apple Reminders: Shared Grocery"
-	assert result.created_items == ["1 Apple"]
-	assert result.omitted_items == ["1 tsp Salt"]
-	assert result.dry_run is True
-
-
-def test_apple_reminders_target_runs_script_in_create_mode() -> None:
+def test_apple_reminders_target_runs_script() -> None:
 	calls = []
 
 	def fake_runner(args, input, check, capture_output, text):
@@ -90,10 +60,12 @@ def test_apple_reminders_target_runs_script_in_create_mode() -> None:
 
 	result = AppleRemindersTarget(runner=fake_runner).create_list(
 		shopping_list,
-		Config(delivery_mode="create", apple_reminders_list_name="Shared Grocery"),
+		Config(apple_reminders_list_name="Shared Grocery"),
 	)
 
-	assert result.dry_run is False
+	assert result.target_app == "apple_reminders"
+	assert result.target_name == "Apple Reminders: Shared Grocery"
+	assert result.created_items == ["1 Apple"]
 	assert len(calls) == 2
 	assert calls[0]["args"][2] == "list-targets"
 	assert calls[1]["args"][0] == "swift"
@@ -102,10 +74,56 @@ def test_apple_reminders_target_runs_script_in_create_mode() -> None:
 		"listIdentifier": "list-1",
 		"listName": "Shared Grocery",
 		"items": ["1 Apple"],
+		"url": None,
 	}
 	assert calls[1]["check"] is True
 	assert calls[1]["capture_output"] is True
 	assert calls[1]["text"] is True
+
+
+def test_apple_reminders_target_passes_recipe_url_to_helper() -> None:
+	calls = []
+
+	def fake_runner(args, input, check, capture_output, text):
+		calls.append({"args": args, "input": input})
+		if args[2] == "list-targets":
+			return subprocess.CompletedProcess(
+				args,
+				0,
+				stdout=json.dumps(
+					[
+						{
+							"id": "list-1",
+							"name": "Shared Grocery",
+							"source": "iCloud",
+							"item_count": 1,
+							"sample_items": ["Milk"],
+						}
+					]
+				),
+				stderr="",
+			)
+		return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
+
+	recipe = {
+		"name": "Test Recipe",
+		"url": "https://example.com/recipe",
+		"ingredients": [
+			{
+				"name": "Apple",
+				"quantity": 1,
+				"always_on_hand": False,
+			},
+		],
+	}
+	shopping_list = build_shopping_list(recipe, 1, include_on_hand=False)
+
+	AppleRemindersTarget(runner=fake_runner).create_list(
+		shopping_list,
+		Config(apple_reminders_list_name="Shared Grocery"),
+	)
+
+	assert json.loads(calls[1]["input"])["url"] == "https://example.com/recipe"
 
 
 def test_apple_reminders_target_uses_configured_list_id_after_listing_targets() -> None:
@@ -155,7 +173,6 @@ def test_apple_reminders_target_uses_configured_list_id_after_listing_targets() 
 	AppleRemindersTarget(runner=fake_runner).create_list(
 		shopping_list,
 		Config(
-			delivery_mode="create",
 			apple_reminders_list_id="list-1",
 			apple_reminders_list_name="Shared Grocery",
 		),
@@ -207,10 +224,51 @@ def test_apple_reminders_target_uses_selector_for_duplicate_list_names() -> None
 
 	AppleRemindersTarget(runner=fake_runner, target_selector=selector).create_list(
 		shopping_list,
-		Config(delivery_mode="create", apple_reminders_list_name="Test"),
+		Config(apple_reminders_list_name="Test"),
 	)
 
 	assert json.loads(calls[1]["input"])["listIdentifier"] == "list-3"
+
+
+def test_apple_reminders_target_sends_selected_list_name_to_helper() -> None:
+	calls = []
+
+	def fake_runner(args, input, check, capture_output, text):
+		calls.append({"args": args, "input": input})
+		if args[2] == "list-targets":
+			return subprocess.CompletedProcess(
+				args,
+				0,
+				stdout=json.dumps(
+					[
+						{"id": "list-1", "name": "Test", "source": "iCloud", "item_count": 0, "sample_items": []},
+					]
+				),
+				stderr="",
+			)
+		return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
+
+	def selector(_target_name: str, options: list[DeliveryTargetOption], _omitted_count: int) -> DeliveryTargetOption:
+		return options[0]
+
+	recipe = {
+		"name": "Test Recipe",
+		"ingredients": [
+			{
+				"name": "Apple",
+				"quantity": 1,
+				"always_on_hand": False,
+			},
+		],
+	}
+	shopping_list = build_shopping_list(recipe, 1, include_on_hand=False)
+
+	AppleRemindersTarget(runner=fake_runner, target_selector=selector).create_list(
+		shopping_list,
+		Config(apple_reminders_list_name="Groceries"),
+	)
+
+	assert json.loads(calls[1]["input"])["listName"] == "Test"
 
 
 def test_apple_reminders_target_hides_configured_list_ids_from_selector() -> None:
@@ -253,7 +311,6 @@ def test_apple_reminders_target_hides_configured_list_ids_from_selector() -> Non
 	AppleRemindersTarget(runner=fake_runner, target_selector=selector).create_list(
 		shopping_list,
 		Config(
-			delivery_mode="create",
 			apple_reminders_list_name="Test",
 			hidden_apple_reminders_list_ids=["list-2"],
 		),
@@ -285,7 +342,7 @@ def test_apple_reminders_target_raises_when_duplicate_names_have_no_selector() -
 	try:
 		AppleRemindersTarget(runner=fake_runner).create_list(
 			shopping_list,
-			Config(delivery_mode="create", apple_reminders_list_name="Test"),
+			Config(apple_reminders_list_name="Test"),
 		)
 	except DeliveryError as error:
 		assert str(error) == 'Multiple reminder lists named "Test" were found.'
@@ -306,7 +363,7 @@ def test_apple_reminders_target_raises_delivery_error_when_script_fails() -> Non
 	try:
 		AppleRemindersTarget(runner=failing_runner).create_list(
 			shopping_list,
-			Config(delivery_mode="create"),
+			Config(),
 		)
 	except DeliveryError as error:
 		assert str(error) == "No list found."

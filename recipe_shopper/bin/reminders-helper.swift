@@ -5,6 +5,7 @@ struct CreatePayload: Decodable {
 	let listIdentifier: String?
 	let listName: String
 	let items: [String]
+	let url: String?
 }
 
 struct ReminderTarget: Encodable {
@@ -143,6 +144,9 @@ func createReminders(in store: EKEventStore) {
 	for item in payload.items {
 		let reminder = EKReminder(eventStore: store)
 		reminder.title = item
+		if let url = payload.url, !url.isEmpty {
+			reminder.url = URL(string: url)
+		}
 		reminder.calendar = calendar
 
 		do {
