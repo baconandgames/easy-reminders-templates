@@ -164,8 +164,6 @@ class AppleRemindersTarget:
 				if target.identifier == config.apple_reminders_list_id:
 					return target
 
-			raise DeliveryError(f"Reminder list not found: {config.apple_reminders_list_id}")
-
 		matches: list[DeliveryTargetOption] = [
 			target for target in visible_targets if target.name == config.apple_reminders_list_name
 		]

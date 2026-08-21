@@ -199,6 +199,47 @@ def test_apple_reminders_target_uses_configured_list_id_after_listing_targets() 
 	assert json.loads(calls[1]["input"])["listIdentifier"] == "list-1"
 
 
+def test_apple_reminders_target_falls_back_to_name_when_configured_list_id_is_stale() -> None:
+	calls = []
+
+	def fake_runner(args, input, check, capture_output, text):
+		calls.append({"args": args, "input": input})
+		if args[2] == "list-targets":
+			return subprocess.CompletedProcess(
+				args,
+				0,
+				stdout=json.dumps(
+					[
+						{
+							"id": "list-2",
+							"name": "Shared Grocery",
+							"source": "iCloud",
+							"item_count": 1,
+							"sample_items": ["Milk"],
+						}
+					]
+				),
+				stderr="",
+			)
+		return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
+
+	shopping_list = build_shopping_list(
+		{"name": "Test Recipe", "ingredients": [{"name": "Apple", "quantity": 1, "always_on_hand": False}]},
+		1,
+		include_on_hand=False,
+	)
+
+	AppleRemindersTarget(runner=fake_runner).create_list(
+		shopping_list,
+		Config(
+			apple_reminders_list_id="deleted-list",
+			apple_reminders_list_name="Shared Grocery",
+		),
+	)
+
+	assert json.loads(calls[1]["input"])["listIdentifier"] == "list-2"
+
+
 def test_apple_reminders_target_uses_selector_for_duplicate_list_names() -> None:
 	calls = []
 

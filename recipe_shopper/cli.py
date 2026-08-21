@@ -378,6 +378,7 @@ def run_listkit_flow(short_name: str | None, config: Config, templates_path: Pat
 				options,
 				omitted_count,
 				prompt_style=build_prompt_style(config.selection_color),
+				default_identifier=config.apple_reminders_list_id,
 			),
 		).create_list(shopping_list, config)
 	except ShopAbort:
@@ -583,6 +584,7 @@ def create_template_from_reminders_list(
 		exit_choice=back_config_choice(),
 		instruction_description="Choose the Reminders list to turn into a reusable ListKit template.",
 		allow_create_new=False,
+		default_identifier=config.apple_reminders_list_id,
 	)
 	if selected_target == BACK_CONFIG_CHOICE:
 		return None
@@ -1023,6 +1025,7 @@ def edit_default_reminders_list(config: Config, prompt_style=None) -> Config:
 		qmark="Set Default List",
 		exit_choice=back_config_choice(),
 		instruction_description="Choose the Reminders list selected by default.",
+		default_identifier=config.apple_reminders_list_id,
 	)
 	if target == BACK_CONFIG_CHOICE:
 		return config
@@ -1111,6 +1114,7 @@ def select_delivery_target(
 	exit_choice=None,
 	instruction_description: str = "Choose where the final items should be added.",
 	allow_create_new: bool = True,
+	default_identifier: str = "",
 ) -> DeliveryTargetOption | str:
 	print()
 	name_counts: Counter[str] = Counter(option.name for option in options)
@@ -1122,7 +1126,9 @@ def select_delivery_target(
 			value=option,
 		)
 		choices.append(choice)
-		if default_choice is None and option.name == target_name:
+		if default_choice is None and default_identifier and option.identifier == default_identifier:
+			default_choice = choice
+		elif default_choice is None and option.name == target_name:
 			default_choice = choice
 
 	if allow_create_new:

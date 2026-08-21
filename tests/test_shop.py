@@ -427,6 +427,42 @@ def test_select_delivery_target_defaults_to_configured_list_and_details_duplicat
 	assert captured["escape_value"] == shop_script.ABORT_CHOICE
 
 
+def test_select_delivery_target_prefers_default_identifier_over_name(monkeypatch) -> None:
+	options = [
+		DeliveryTargetOption(
+			identifier="list-1",
+			name="Old Name",
+			source="iCloud",
+			item_count=1,
+			sample_items=[],
+		),
+		DeliveryTargetOption(
+			identifier="list-2",
+			name="General",
+			source="iCloud",
+			item_count=0,
+			sample_items=[],
+		),
+	]
+	captured = {}
+
+	def fake_select(*args, **kwargs):
+		captured["default"] = kwargs["default"]
+		return FakePrompt(options[0])
+
+	monkeypatch.setattr(shop_script.questionary, "select", fake_select)
+
+	assert (
+		shop_script.select_delivery_target(
+			"General",
+			options,
+			default_identifier="list-1",
+		)
+		== options[0]
+	)
+	assert captured["default"].value == options[0]
+
+
 def test_select_delivery_target_can_create_new_list(monkeypatch) -> None:
 	options = [
 		DeliveryTargetOption(
@@ -1070,6 +1106,7 @@ def test_edit_default_reminders_list_updates_name_and_id(monkeypatch) -> None:
 		qmark="",
 		exit_choice=None,
 		instruction_description="",
+		default_identifier="",
 	):
 		assert target_name == "General"
 		assert [option.identifier for option in options] == ["list-1"]
@@ -1077,6 +1114,7 @@ def test_edit_default_reminders_list_updates_name_and_id(monkeypatch) -> None:
 		assert qmark == "Set Default List"
 		assert exit_choice.title == [("class:app-action", "[ ← Back ]")]
 		assert instruction_description == "Choose the Reminders list selected by default."
+		assert default_identifier == ""
 		return options[0]
 
 	monkeypatch.setattr(shop_script, "AppleRemindersTarget", FakeAppleRemindersTarget)
