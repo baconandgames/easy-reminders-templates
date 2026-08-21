@@ -51,6 +51,7 @@ INGREDIENT_INSTRUCTION: str = "\n[SPACE to include/exclude ingredients | ENTER t
 CONFIG_LIST_INSTRUCTION: str = "\n[SPACE to show/hide lists | ENTER to save | Ctrl-C to abort]\n"
 COLOR_MENU_INSTRUCTION: str = "\n[ENTER to edit | ESC to return | Ctrl-C to quit]\n"
 COLOR_PICKER_CONTROLS: str = "[ENTER to save | ESC to return | Ctrl-C to quit]"
+OPTIONS_MENU_INSTRUCTION: str = "\n[ENTER to edit | ESC to return | Ctrl-C to quit]\n"
 TRUNCATED_SAMPLE_LENGTH: int = 11
 PROMPT_COLORS: dict[str, str] = {
 	"default": "",
@@ -327,7 +328,7 @@ def run_config_editor(config_path: Path, config: Config, prompt_style=None) -> i
 			choices=[
 				questionary.Choice(title="Reminders Lists", value="reminders_lists"),
 				questionary.Choice(title="Colors", value="colors"),
-				questionary.Choice(title="Defaults", value="defaults"),
+				questionary.Choice(title="Options", value="options"),
 				exit_config_choice(),
 			],
 			instruction=SELECT_INSTRUCTION,
@@ -348,6 +349,10 @@ def run_config_editor(config_path: Path, config: Config, prompt_style=None) -> i
 
 		if action == "colors":
 			config = edit_color_settings(config_path, config, prompt_style=prompt_style)
+			continue
+
+		if action == "options":
+			config = edit_options(config_path, config, prompt_style=prompt_style)
 			continue
 
 		print()
@@ -444,6 +449,119 @@ def edit_color_settings(config_path: Path, config: Config, prompt_style=None) ->
 		save_config(config_path, config)
 		print()
 		print("Saved config.json")
+
+
+def edit_options(config_path: Path, config: Config, prompt_style=None) -> Config:
+	while True:
+		selection = questionary.select(
+			"",
+			choices=[
+				questionary.Choice(
+					title=f"Default Reminder List: {config.apple_reminders_list_name}",
+					value="apple_reminders_list",
+				),
+				questionary.Choice(
+					title=f"Include All On-Hand Items: {format_bool_option(config.include_on_hand_default)}",
+					value="include_on_hand_default",
+				),
+				questionary.Choice(
+					title=f"Append Recipe Short Name: {format_bool_option(config.append_short_name)}",
+					value="append_short_name",
+				),
+				questionary.Choice(
+					title=f"Delivery Mode: {format_delivery_mode(config.delivery_mode)}",
+					value="delivery_mode",
+				),
+				back_config_choice(),
+			],
+			instruction=OPTIONS_MENU_INSTRUCTION,
+			pointer=">",
+			qmark="Options",
+			style=prompt_style,
+		)
+		bind_escape_value(selection, BACK_CONFIG_CHOICE)
+		setting_name = require_config_selection(ask_or_abort(selection))
+		if setting_name == BACK_CONFIG_CHOICE:
+			return config
+
+		if setting_name == "apple_reminders_list":
+			config = edit_default_reminders_list(config, prompt_style=prompt_style)
+		elif setting_name in {"include_on_hand_default", "append_short_name"}:
+			config = edit_bool_option(config, setting_name, prompt_style=prompt_style)
+		elif setting_name == "delivery_mode":
+			config = edit_delivery_mode(config, prompt_style=prompt_style)
+
+		save_config(config_path, config)
+		print()
+		print("Saved config.json")
+
+
+def edit_default_reminders_list(config: Config, prompt_style=None) -> Config:
+	targets: list[DeliveryTargetOption] = AppleRemindersTarget().list_targets()
+	visible_targets: list[DeliveryTargetOption] = [
+		target for target in targets if target.identifier not in config.hidden_apple_reminders_list_ids
+	]
+	if len(visible_targets) == 0:
+		raise DeliveryError("No visible Apple Reminders lists were found.")
+
+	target = select_delivery_target(
+		config.apple_reminders_list_name,
+		visible_targets,
+		omitted_count=len(targets) - len(visible_targets),
+		prompt_style=prompt_style,
+	)
+	return replace(
+		config,
+		apple_reminders_list_id=target.identifier,
+		apple_reminders_list_name=target.name,
+	)
+
+
+def edit_bool_option(config: Config, setting_name: str, prompt_style=None) -> Config:
+	current_value: bool = getattr(config, setting_name)
+	choices: list[questionary.Choice] = [
+		questionary.Choice(title="Yes", value=True),
+		questionary.Choice(title="No", value=False),
+	]
+	default_choice: questionary.Choice = choices[0] if current_value else choices[1]
+	selection = questionary.select(
+		"",
+		choices=choices,
+		default=default_choice,
+		instruction=SELECT_INSTRUCTION,
+		pointer=">",
+		qmark=format_config_setting_name(setting_name),
+		style=prompt_style,
+	)
+	bind_escape_value(selection, BACK_CONFIG_CHOICE)
+	value = require_config_selection(ask_or_abort(selection))
+	if value == BACK_CONFIG_CHOICE:
+		return config
+
+	return replace(config, **{setting_name: value})
+
+
+def edit_delivery_mode(config: Config, prompt_style=None) -> Config:
+	choices: list[questionary.Choice] = [
+		questionary.Choice(title="Dry Run", value="dry_run"),
+		questionary.Choice(title="Create", value="create"),
+	]
+	default_choice: questionary.Choice = next(choice for choice in choices if choice.value == config.delivery_mode)
+	selection = questionary.select(
+		"",
+		choices=choices,
+		default=default_choice,
+		instruction=SELECT_INSTRUCTION,
+		pointer=">",
+		qmark="Delivery Mode",
+		style=prompt_style,
+	)
+	bind_escape_value(selection, BACK_CONFIG_CHOICE)
+	mode = require_config_selection(ask_or_abort(selection))
+	if mode == BACK_CONFIG_CHOICE:
+		return config
+
+	return replace(config, delivery_mode=mode)
 
 
 def prompt_for_batch_size(recipe: dict[str, Any], prompt_style=None) -> float:
@@ -656,6 +774,14 @@ def bind_escape_value(prompt, value) -> None:
 
 def format_config_setting_name(setting_name: str) -> str:
 	return setting_name.replace("_", " ").title()
+
+
+def format_bool_option(value: bool) -> str:
+	return "Yes" if value else "No"
+
+
+def format_delivery_mode(value: str) -> str:
+	return "Dry Run" if value == "dry_run" else "Create"
 
 
 def format_color_setting_instruction(setting_name: str) -> str:

@@ -331,6 +331,25 @@ def test_run_config_editor_saves_color_setting_and_returns_to_menu(monkeypatch, 
 	assert load_config(config_path).quantity_color == "cyan"
 
 
+def test_run_config_editor_saves_option_setting_and_returns_to_menu(monkeypatch, tmp_path) -> None:
+	config_path = tmp_path / "config.json"
+	menu_results = iter(["options", shop_script.EXIT_CONFIG_CHOICE])
+
+	def fake_select(*args, **kwargs):
+		return FakePrompt(next(menu_results))
+
+	def fake_edit_options(config_path, config, prompt_style=None):
+		config = Config(append_short_name=False)
+		shop_script.save_config(config_path, config)
+		return config
+
+	monkeypatch.setattr(shop_script.questionary, "select", fake_select)
+	monkeypatch.setattr(shop_script, "edit_options", fake_edit_options)
+
+	assert shop_script.run_config_editor(config_path, Config()) == 0
+	assert load_config(config_path).append_short_name is False
+
+
 def test_exit_config_choice_uses_plain_exit_label() -> None:
 	choice = shop_script.exit_config_choice()
 
@@ -419,6 +438,93 @@ def test_bind_escape_value_sets_prompt_result() -> None:
 	bindings = prompt.application.key_bindings.get_bindings_for_keys((shop_script.Keys.Escape,))
 
 	assert any(binding.keys == (shop_script.Keys.Escape,) for binding in bindings)
+
+
+def test_edit_options_updates_boolean_setting_and_returns_to_options_menu(monkeypatch, tmp_path) -> None:
+	config_path = tmp_path / "config.json"
+	results = iter(["append_short_name", False, shop_script.BACK_CONFIG_CHOICE])
+	captured = []
+
+	def fake_select(*args, **kwargs):
+		captured.append(kwargs)
+		return FakePrompt(next(results))
+
+	monkeypatch.setattr(shop_script.questionary, "select", fake_select)
+
+	config = shop_script.edit_options(config_path, Config(append_short_name=True))
+
+	assert config.append_short_name is False
+	assert load_config(config_path).append_short_name is False
+	assert captured[0]["qmark"] == "Options"
+	assert captured[0]["instruction"] == shop_script.OPTIONS_MENU_INSTRUCTION
+	assert captured[0]["choices"][2].title == "Append Recipe Short Name: Yes"
+	assert captured[1]["qmark"] == "Append Short Name"
+	assert captured[1]["default"].value is True
+	assert captured[2]["qmark"] == "Options"
+
+
+def test_edit_options_updates_delivery_mode(monkeypatch, tmp_path) -> None:
+	config_path = tmp_path / "config.json"
+	results = iter(["delivery_mode", "dry_run", shop_script.BACK_CONFIG_CHOICE])
+
+	def fake_select(*args, **kwargs):
+		return FakePrompt(next(results))
+
+	monkeypatch.setattr(shop_script.questionary, "select", fake_select)
+
+	config = shop_script.edit_options(config_path, Config(delivery_mode="create"))
+
+	assert config.delivery_mode == "dry_run"
+	assert load_config(config_path).delivery_mode == "dry_run"
+
+
+def test_edit_default_reminders_list_updates_name_and_id(monkeypatch) -> None:
+	options = [
+		DeliveryTargetOption(
+			identifier="list-1",
+			name="General",
+			source="iCloud",
+			item_count=1,
+			sample_items=[],
+		),
+		DeliveryTargetOption(
+			identifier="list-2",
+			name="Test",
+			source="iCloud",
+			item_count=0,
+			sample_items=[],
+		),
+	]
+
+	class FakeAppleRemindersTarget:
+		def list_targets(self):
+			return options
+
+	def fake_select_delivery_target(target_name, options, omitted_count=0, prompt_style=None):
+		assert target_name == "General"
+		assert [option.identifier for option in options] == ["list-1"]
+		assert omitted_count == 1
+		return options[0]
+
+	monkeypatch.setattr(shop_script, "AppleRemindersTarget", FakeAppleRemindersTarget)
+	monkeypatch.setattr(shop_script, "select_delivery_target", fake_select_delivery_target)
+
+	config = shop_script.edit_default_reminders_list(
+		Config(
+			apple_reminders_list_name="General",
+			hidden_apple_reminders_list_ids=["list-2"],
+		),
+	)
+
+	assert config.apple_reminders_list_id == "list-1"
+	assert config.apple_reminders_list_name == "General"
+
+
+def test_format_option_values() -> None:
+	assert shop_script.format_bool_option(True) == "Yes"
+	assert shop_script.format_bool_option(False) == "No"
+	assert shop_script.format_delivery_mode("dry_run") == "Dry Run"
+	assert shop_script.format_delivery_mode("create") == "Create"
 
 
 def test_format_omitted_list_instruction_pluralizes_lists() -> None:

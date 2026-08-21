@@ -120,5 +120,5 @@ When `apple_reminders_list_id` is set, it is preferred over
 `apple_reminders_list_name`.
 
 Run `shop config` to choose which Apple Reminders lists appear in the target
-list picker and to edit terminal colors. Hidden lists are stored in
+list picker, edit terminal colors, and update common options. Hidden lists are stored in
 `hidden_apple_reminders_list_ids`.
