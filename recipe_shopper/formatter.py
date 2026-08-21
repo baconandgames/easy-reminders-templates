@@ -55,7 +55,7 @@ def build_shopping_list(
 
 	for ingredient in ingredients:
 		quantity: float | None = None
-		if "quantity" in ingredient and ingredient["quantity"] is not None:
+		if "quantity" in ingredient and ingredient["quantity"] not in (None, ""):
 			quantity = float(ingredient["quantity"])
 			if batch_size is not None:
 				quantity *= batch_size
@@ -63,7 +63,7 @@ def build_shopping_list(
 		item: ShoppingListItem = ShoppingListItem(
 			name=ingredient["name"],
 			quantity=quantity,
-			unit=ingredient.get("unit"),
+			unit=ingredient.get("unit") or None,
 			tag=short_name,
 			omitted=ingredient["always_on_hand"] and not include_on_hand,
 			always_on_hand=ingredient["always_on_hand"],

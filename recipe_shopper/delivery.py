@@ -125,6 +125,27 @@ class AppleRemindersTarget:
 			sample_items=[str(item) for item in target.get("sample_items", [])],
 		)
 
+	def list_items(self, list_identifier: str) -> list[str]:
+		helper_path: Path = get_reminders_helper_path()
+		try:
+			result = self._runner(
+				["swift", str(helper_path), "list-items"],
+				input=list_identifier,
+				check=True,
+				capture_output=True,
+				text=True,
+			)
+		except subprocess.CalledProcessError as error:
+			message: str = error.stderr.strip() or "Could not list Apple Reminders items."
+			raise DeliveryError(message) from error
+
+		try:
+			items: list[object] = json.loads(result.stdout)
+		except json.JSONDecodeError as error:
+			raise DeliveryError("Could not parse Apple Reminders items.") from error
+
+		return [str(item) for item in items]
+
 	def _resolve_list_target(self, config: Config) -> DeliveryTargetOption:
 		targets: list[DeliveryTargetOption] = self.list_targets()
 		visible_targets: list[DeliveryTargetOption] = [

@@ -201,3 +201,34 @@ def test_render_shopping_list_supports_items_without_quantities() -> None:
 		"- Towels [Beach]\n"
 		"- Sunscreen [Beach]"
 	)
+
+
+def test_build_shopping_list_treats_blank_quantity_and_unit_as_unset() -> None:
+	template = {
+		"name": "Packing",
+		"short_name": "",
+		"items": [
+			{
+				"name": "Passport",
+				"quantity": "",
+				"unit": "",
+				"always_on_hand": False,
+			},
+			{
+				"name": "Apple",
+				"quantity": 3,
+				"unit": "",
+				"always_on_hand": False,
+			},
+		],
+	}
+
+	shopping_list = build_shopping_list(template, None, include_on_hand=False)
+
+	assert render_shopping_list(shopping_list, color_scheme=PLAIN_COLORS) == (
+		"Packing\n\n"
+		"Included\n"
+		"----------------\n"
+		"-       Passport\n"
+		"- 3     Apples"
+	)

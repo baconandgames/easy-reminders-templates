@@ -364,6 +364,13 @@ def test_create_new_list_choice_uses_bracketed_label() -> None:
 	assert choice.value.identifier == shop_script.CREATE_NEW_LIST_IDENTIFIER
 
 
+def test_create_template_from_list_choice_uses_bracketed_label() -> None:
+	choice = shop_script.create_template_from_list_choice()
+
+	assert choice.title == [("class:app-action", "[ + Create Template from List ]")]
+	assert choice.value == shop_script.CREATE_TEMPLATE_FROM_LIST_CHOICE
+
+
 def test_select_delivery_target_defaults_to_configured_list_and_details_duplicates(monkeypatch) -> None:
 	options = [
 		DeliveryTargetOption(
@@ -475,6 +482,28 @@ def test_select_delivery_target_can_create_new_list_when_no_lists_exist(monkeypa
 	monkeypatch.setattr(shop_script, "AppleRemindersTarget", FakeAppleRemindersTarget)
 
 	assert shop_script.select_delivery_target("General", []) == target
+
+
+def test_select_delivery_target_can_hide_create_new_list_choice(monkeypatch) -> None:
+	options = [
+		DeliveryTargetOption(
+			identifier="list-1",
+			name="General",
+			source="iCloud",
+			item_count=1,
+			sample_items=[],
+		),
+	]
+	captured = {}
+
+	def fake_select(*args, **kwargs):
+		captured["choices"] = kwargs["choices"]
+		return FakePrompt(options[0])
+
+	monkeypatch.setattr(shop_script.questionary, "select", fake_select)
+
+	assert shop_script.select_delivery_target("General", options, allow_create_new=False) == options[0]
+	assert [choice.value for choice in captured["choices"]] == [options[0], shop_script.ABORT_CHOICE]
 
 
 def test_select_delivery_target_can_abort(monkeypatch) -> None:
@@ -1142,6 +1171,48 @@ def test_format_delivery_target_option_shows_sample_items() -> None:
 	)
 
 	assert shop_script.format_delivery_target_option(option) == "Test (6) - 3 28 oz can..., 5 lb Ground..., TP"
+
+
+def test_write_template_from_reminders_list_creates_recipe_capable_list_template(tmp_path) -> None:
+	template_path = shop_script.write_template_from_reminders_list(
+		tmp_path / "templates",
+		"Beach Day",
+		"beach-day",
+		["Towels", "Sunscreen"],
+	)
+
+	assert template_path == tmp_path / "templates" / "lists" / "beach-day.json"
+	assert template_path.read_text(encoding="utf-8") == (
+		'{\n'
+		'  "schema_version": 1,\n'
+		'  "type": "list",\n'
+		'  "name": "Beach Day",\n'
+		'  "short_name": "beach-day",\n'
+		'  "default_batch": "",\n'
+		'  "items": [\n'
+		'    {\n'
+		'      "name": "Towels",\n'
+		'      "quantity": "",\n'
+		'      "unit": "",\n'
+		'      "always_on_hand": false\n'
+		'    },\n'
+		'    {\n'
+		'      "name": "Sunscreen",\n'
+		'      "quantity": "",\n'
+		'      "unit": "",\n'
+		'      "always_on_hand": false\n'
+		'    }\n'
+		'  ]\n'
+		'}\n'
+	)
+
+
+def test_next_available_template_path_avoids_overwriting_existing_template(tmp_path) -> None:
+	lists_path = tmp_path / "lists"
+	lists_path.mkdir()
+	(lists_path / "beach-day.json").write_text("{}", encoding="utf-8")
+
+	assert shop_script.next_available_template_path(lists_path, "beach-day") == lists_path / "beach-day-2.json"
 
 
 def test_format_delivery_target_option_handles_empty_list() -> None:

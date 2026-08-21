@@ -116,6 +116,31 @@ def test_apple_reminders_target_creates_target() -> None:
 	assert calls[0]["input"] == "Beach"
 
 
+def test_apple_reminders_target_lists_items() -> None:
+	calls = []
+
+	def fake_runner(args, input, check, capture_output, text):
+		calls.append(
+			{
+				"args": args,
+				"input": input,
+				"check": check,
+				"capture_output": capture_output,
+				"text": text,
+			}
+		)
+		return subprocess.CompletedProcess(args, 0, stdout=json.dumps(["Passport", "Socks"]), stderr="")
+
+	items = AppleRemindersTarget(runner=fake_runner).list_items("list-1")
+
+	assert items == ["Passport", "Socks"]
+	assert calls[0]["args"][2] == "list-items"
+	assert calls[0]["input"] == "list-1"
+	assert calls[0]["check"] is True
+	assert calls[0]["capture_output"] is True
+	assert calls[0]["text"] is True
+
+
 def test_apple_reminders_target_uses_configured_list_id_after_listing_targets() -> None:
 	calls = []
 

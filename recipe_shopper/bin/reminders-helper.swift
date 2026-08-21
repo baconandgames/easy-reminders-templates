@@ -118,6 +118,30 @@ func listTargets(in store: EKEventStore) {
 	}
 }
 
+func listItems(in store: EKEventStore) {
+	let input = FileHandle.standardInput.readDataToEndOfFile()
+	guard let listIdentifier = String(data: input, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
+		!listIdentifier.isEmpty else {
+		fail("Reminder list identifier must not be empty.")
+	}
+
+	guard let calendar = reminderCalendars(in: store).first(where: { $0.calendarIdentifier == listIdentifier }) else {
+		fail("Reminder list not found: \(listIdentifier)")
+	}
+
+	let titles = incompleteReminderTitles(in: store, calendar: calendar)
+
+	do {
+		let data = try JSONEncoder().encode(titles)
+		guard let output = String(data: data, encoding: .utf8) else {
+			fail("Could not encode reminder items.")
+		}
+		print(output)
+	} catch {
+		fail("Could not encode reminder items: \(error.localizedDescription)")
+	}
+}
+
 func createList(in store: EKEventStore) {
 	let input = FileHandle.standardInput.readDataToEndOfFile()
 	guard let listName = String(data: input, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -193,7 +217,7 @@ func createReminders(in store: EKEventStore) {
 
 let arguments = CommandLine.arguments
 guard arguments.count == 2 else {
-	fail("Usage: reminders-helper.swift <list-reminders|list-targets|create-list|create-reminders>")
+	fail("Usage: reminders-helper.swift <list-reminders|list-targets|list-items|create-list|create-reminders>")
 }
 
 let store = EKEventStore()
@@ -204,6 +228,8 @@ case "list-reminders":
 	listReminders(in: store)
 case "list-targets":
 	listTargets(in: store)
+case "list-items":
+	listItems(in: store)
 case "create-list":
 	createList(in: store)
 case "create-reminders":

@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -72,6 +74,8 @@ ABORT_COMMANDS: set[str] = {"q", "quit", "cancel", "abort"}
 ABORT_CHOICE: str = "__abort__"
 ABORT_TITLE: str = "[ ← Exit ListKit ]"
 CREATE_NEW_LIST_TITLE: str = "[ + Create New List ]"
+CREATE_TEMPLATE_FROM_LIST_CHOICE: str = "__create_template_from_list__"
+CREATE_TEMPLATE_FROM_LIST_TITLE: str = "[ + Create Template from List ]"
 EXIT_CONFIG_CHOICE: str = "__exit_config__"
 EXIT_CONFIG_TITLE: str = "[ ← Exit Config Menu ]"
 RETURN_TO_LISTKIT_CHOICE: str = "__return_to_listkit__"
@@ -83,6 +87,14 @@ MAIN_FLOW_DESCRIPTION: str = "Choose a template, adjust its items, then send the
 SELECT_TEMPLATE_INSTRUCTION: str = format_prompt_instruction(
 	MAIN_FLOW_DESCRIPTION,
 	"[↑↓ + ENTER to select | ESC to exit | Ctrl-C to quit]",
+)
+TEMPLATE_NAME_INSTRUCTION: str = format_prompt_instruction(
+	"Enter the name to use for this ListKit template.",
+	"[ENTER to save | ESC to return | Ctrl-C to quit]",
+)
+TEMPLATE_SHORT_NAME_INSTRUCTION: str = format_prompt_instruction(
+	"Enter an optional shortcut for running this template from Terminal.",
+	"[ENTER to save | ESC to return | Ctrl-C to quit]",
 )
 CONFIG_MENU_INSTRUCTION: str = format_prompt_instruction(
 	"Change ListKit settings or return to list creation.",
@@ -290,7 +302,22 @@ def run_listkit_flow(short_name: str | None, config: Config, templates_path: Pat
 		prompt_style = build_prompt_style(config.selection_color)
 		print()
 		if short_name is None:
-			template = select_template(templates, prompt_style=prompt_style)
+			while True:
+				selected_template = select_template(templates, prompt_style=prompt_style)
+				if selected_template == CREATE_TEMPLATE_FROM_LIST_CHOICE:
+					created_template_path = create_template_from_reminders_list(
+						templates_path,
+						config,
+						prompt_style=prompt_style,
+					)
+					if created_template_path is not None:
+						print()
+						print(render_created_template_result(created_template_path))
+						templates = load_templates(templates_path)
+					continue
+
+				template = selected_template
+				break
 		else:
 			try:
 				match: tuple[str, dict[str, Any]] | None = find_template_by_short_name(templates, short_name)
@@ -514,7 +541,7 @@ def format_available_template(template: dict[str, Any]) -> str:
 	return template["name"]
 
 
-def select_template(templates: dict[str, dict[str, Any]], prompt_style=None) -> dict[str, Any]:
+def select_template(templates: dict[str, dict[str, Any]], prompt_style=None) -> dict[str, Any] | str:
 	template_options: list[dict[str, Any]] = list(templates.values())
 	choices: list[questionary.Choice] = [
 		questionary.Choice(
@@ -523,6 +550,7 @@ def select_template(templates: dict[str, dict[str, Any]], prompt_style=None) -> 
 		)
 		for template in template_options
 	]
+	choices.append(create_template_from_list_choice())
 	choices.append(abort_choice())
 
 	selection = questionary.select(
@@ -535,6 +563,135 @@ def select_template(templates: dict[str, dict[str, Any]], prompt_style=None) -> 
 	)
 	bind_escape_value(selection, ABORT_CHOICE)
 	return require_selection(ask_or_abort(selection))
+
+
+def create_template_from_reminders_list(
+	templates_path: Path,
+	config: Config,
+	prompt_style=None,
+) -> Path | None:
+	reminders = AppleRemindersTarget()
+	targets: list[DeliveryTargetOption] = reminders.list_targets()
+	visible_targets: list[DeliveryTargetOption] = [
+		target for target in targets if target.identifier not in config.hidden_apple_reminders_list_ids
+	]
+	omitted_count: int = len(targets) - len(visible_targets)
+	selected_target = select_delivery_target(
+		config.apple_reminders_list_name,
+		visible_targets,
+		omitted_count=omitted_count,
+		prompt_style=prompt_style,
+		qmark="Choose Source List",
+		exit_choice=back_config_choice(),
+		instruction_description="Choose the Reminders list to turn into a reusable ListKit template.",
+		allow_create_new=False,
+	)
+	if selected_target == BACK_CONFIG_CHOICE:
+		return None
+
+	item_names: list[str] = reminders.list_items(selected_target.identifier)
+	template_name: str | None = prompt_for_template_name(selected_target.name, prompt_style=prompt_style)
+	if template_name is None:
+		return None
+
+	short_name: str | None = prompt_for_template_short_name(template_name, prompt_style=prompt_style)
+	if short_name is None:
+		return None
+
+	template_path: Path = write_template_from_reminders_list(
+		templates_path,
+		template_name,
+		short_name,
+		item_names,
+	)
+	return template_path
+
+
+def prompt_for_template_name(default_name: str, prompt_style=None) -> str | None:
+	prompt = questionary.text(
+		"",
+		default=default_name,
+		validate=validate_template_name,
+		qmark="Template Name",
+		instruction=TEMPLATE_NAME_INSTRUCTION,
+		style=prompt_style,
+	)
+	bind_escape_value(prompt, BACK_CONFIG_CHOICE)
+	selection = ask_or_abort(prompt)
+	if selection == BACK_CONFIG_CHOICE:
+		return None
+
+	return require_selection(selection).strip()
+
+
+def prompt_for_template_short_name(template_name: str, prompt_style=None) -> str | None:
+	prompt = questionary.text(
+		"",
+		default=slugify_template_filename(template_name),
+		qmark="Template Short Name",
+		instruction=TEMPLATE_SHORT_NAME_INSTRUCTION,
+		style=prompt_style,
+	)
+	bind_escape_value(prompt, BACK_CONFIG_CHOICE)
+	selection = ask_or_abort(prompt)
+	if selection == BACK_CONFIG_CHOICE:
+		return None
+
+	return require_selection(selection).strip()
+
+
+def write_template_from_reminders_list(
+	templates_path: Path,
+	template_name: str,
+	short_name: str,
+	item_names: list[str],
+) -> Path:
+	lists_path: Path = templates_path / "lists"
+	lists_path.mkdir(parents=True, exist_ok=True)
+	template_path: Path = next_available_template_path(lists_path, slugify_template_filename(template_name))
+	template_data: dict[str, Any] = {
+		"schema_version": 1,
+		"type": "list",
+		"name": template_name,
+		"short_name": short_name,
+		"default_batch": "",
+		"items": [
+			{
+				"name": item_name,
+				"quantity": "",
+				"unit": "",
+				"always_on_hand": False,
+			}
+			for item_name in item_names
+		],
+	}
+	template_path.write_text(f"{json.dumps(template_data, indent=2)}\n", encoding="utf-8")
+	return template_path
+
+
+def next_available_template_path(directory: Path, slug: str) -> Path:
+	base_slug: str = slug or "template"
+	candidate: Path = directory / f"{base_slug}.json"
+	index: int = 2
+	while candidate.exists():
+		candidate = directory / f"{base_slug}-{index}.json"
+		index += 1
+
+	return candidate
+
+
+def slugify_template_filename(value: str) -> str:
+	slug: str = re.sub(r"[^a-z0-9]+", "-", value.casefold()).strip("-")
+	return slug or "template"
+
+
+def render_created_template_result(template_path: Path) -> str:
+	return "\n".join(
+		[
+			style_instruction(f"Template created: {template_path}"),
+			style_instruction("Edit the JSON later to add quantities, units, default batch, or on-hand settings."),
+		]
+	)
 
 
 def run_config_editor(config_path: Path, config: Config, prompt_style=None) -> str:
@@ -954,6 +1111,7 @@ def select_delivery_target(
 	qmark: str = "Choose Reminder List",
 	exit_choice=None,
 	instruction_description: str = "Choose where the final items should be added.",
+	allow_create_new: bool = True,
 ) -> DeliveryTargetOption | str:
 	print()
 	name_counts: Counter[str] = Counter(option.name for option in options)
@@ -968,7 +1126,8 @@ def select_delivery_target(
 		if default_choice is None and option.name == target_name:
 			default_choice = choice
 
-	choices.append(create_new_list_choice())
+	if allow_create_new:
+		choices.append(create_new_list_choice())
 	navigation_choice = exit_choice or abort_choice()
 	choices.append(navigation_choice)
 	selection = questionary.select(
@@ -988,6 +1147,9 @@ def select_delivery_target(
 	selected_target: DeliveryTargetOption | str = require_selection(ask_or_abort(selection))
 	if selected_target == BACK_CONFIG_CHOICE:
 		return BACK_CONFIG_CHOICE
+
+	if not isinstance(selected_target, DeliveryTargetOption):
+		return selected_target
 
 	if selected_target.identifier != CREATE_NEW_LIST_IDENTIFIER:
 		return selected_target
@@ -1166,6 +1328,13 @@ def create_new_list_choice():
 	)
 
 
+def create_template_from_list_choice():
+	return questionary.Choice(
+		title=[("class:app-action", CREATE_TEMPLATE_FROM_LIST_TITLE)],
+		value=CREATE_TEMPLATE_FROM_LIST_CHOICE,
+	)
+
+
 def exit_config_choice():
 	return questionary.Choice(title=[("class:app-action", EXIT_CONFIG_TITLE)], value=EXIT_CONFIG_CHOICE)
 
@@ -1250,6 +1419,13 @@ def format_bool_option(value: bool) -> str:
 def validate_new_list_name(value: str) -> bool | str:
 	if value.strip() == "":
 		return "Enter a list name."
+
+	return True
+
+
+def validate_template_name(value: str) -> bool | str:
+	if value.strip() == "":
+		return "Enter a template name."
 
 	return True
 

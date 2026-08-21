@@ -41,7 +41,7 @@ def find_template_by_short_name(templates: TemplateMap, short_name: str) -> tupl
 
 def template_uses_batch_size(template: Template) -> bool:
 	items: list[dict[str, Any]] = template.get("ingredients", template.get("items", []))
-	return "default_batch" in template or any(item.get("quantity") is not None for item in items)
+	return template.get("default_batch") is not None or any(item.get("quantity") is not None for item in items)
 
 
 def template_has_on_hand_items(template: Template) -> bool:
@@ -107,14 +107,27 @@ def _read_template_file(path: Path) -> Template:
 
 def _normalize_template(template: Template) -> Template:
 	normalized: Template = dict(template)
+	if normalized.get("default_batch") == "":
+		normalized["default_batch"] = None
+
 	if "ingredients" not in normalized and "items" in normalized:
-		normalized["ingredients"] = normalized["items"]
+		normalized["ingredients"] = [dict(item) if isinstance(item, dict) else item for item in normalized["items"]]
+	elif "ingredients" in normalized:
+		normalized["ingredients"] = [
+			dict(item) if isinstance(item, dict) else item for item in normalized["ingredients"]
+		]
 
 	if "type" not in normalized:
 		normalized["type"] = "recipe"
 
 	for item in normalized.get("ingredients", []):
-		if isinstance(item, dict) and "always_on_hand" not in item:
+		if not isinstance(item, dict):
+			continue
+		if item.get("quantity") == "":
+			item["quantity"] = None
+		if item.get("unit") == "":
+			item["unit"] = None
+		if "always_on_hand" not in item:
 			item["always_on_hand"] = False
 
 	return normalized
