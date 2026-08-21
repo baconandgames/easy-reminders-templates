@@ -131,8 +131,8 @@ The CLI then prompts for:
 - batch size, when the template includes quantities
 - whether to include items marked as usually on hand, when relevant
 
-Interactive prompts can be cancelled with the `Abort` option, `Ctrl-C`, or `q`
-where text input is accepted.
+Interactive prompts can be exited with `Esc`. Pressing `Esc` backs out of
+submenus and exits when you reach the top level.
 
 Before sending anything to the target app, `listkit` shows all template items in a
 checkbox list. Items are preselected based on the on-hand prompt, and can be

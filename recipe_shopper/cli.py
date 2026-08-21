@@ -13,6 +13,7 @@ from typing import Any
 
 try:
 	import questionary
+	from prompt_toolkit.key_binding import KeyBindings, merge_key_bindings
 	from prompt_toolkit.keys import Keys
 except ModuleNotFoundError:
 	project_dir: Path = Path(__file__).resolve().parents[1]
@@ -63,22 +64,52 @@ from recipe_shopper.updates import (
 )
 
 
+def format_prompt_instruction(prose: str, controls: str) -> str:
+	return f"\n{prose}\n{controls}\n"
+
+
 ABORT_COMMANDS: set[str] = {"q", "quit", "cancel", "abort"}
 ABORT_CHOICE: str = "__abort__"
-ABORT_TITLE: str = "[ ! Abort ]"
+ABORT_TITLE: str = "[ ← Exit ListKit ]"
 CREATE_NEW_LIST_TITLE: str = "[ + Create New List ]"
 EXIT_CONFIG_CHOICE: str = "__exit_config__"
-EXIT_CONFIG_TITLE: str = "Exit Config Menu"
+EXIT_CONFIG_TITLE: str = "[ ← Exit Config Menu ]"
+RETURN_TO_LISTKIT_CHOICE: str = "__return_to_listkit__"
+RETURN_TO_LISTKIT_TITLE: str = "[ ↩ Return to ListKit ]"
 BACK_CONFIG_CHOICE: str = "__back_config__"
-BACK_CONFIG_TITLE: str = "Back to Config Menu"
-START_INSTRUCTION: str = "[↑↓ + ENTER to select | Ctrl-C to abort]"
-SELECT_INSTRUCTION: str = " "
-INGREDIENT_INSTRUCTION: str = "\n[SPACE to include/exclude items | ENTER to continue | Ctrl-C to abort]\n"
-CONFIG_LIST_INSTRUCTION: str = "\n[SPACE to show/hide lists | ENTER to save | Ctrl-C to abort]\n"
-COLOR_MENU_INSTRUCTION: str = "\n[ENTER to edit | ESC to return | Ctrl-C to quit]\n"
+BACK_CONFIG_CHECKBOX_CHOICE: list[str] = [BACK_CONFIG_CHOICE]
+BACK_CONFIG_TITLE: str = "[ ← Back ]"
+MAIN_FLOW_DESCRIPTION: str = "Choose a template, adjust its items, then send the final list to Reminders."
+SELECT_TEMPLATE_INSTRUCTION: str = format_prompt_instruction(
+	MAIN_FLOW_DESCRIPTION,
+	"[↑↓ + ENTER to select | ESC to exit | Ctrl-C to quit]",
+)
+CONFIG_MENU_INSTRUCTION: str = format_prompt_instruction(
+	"Change ListKit settings or return to list creation.",
+	"[↑↓ + ENTER to select | ESC to exit | Ctrl-C to quit]",
+)
+INGREDIENT_INSTRUCTION: str = format_prompt_instruction(
+	"Select the items that should be added to the final Reminders list.",
+	"[SPACE to include/exclude items | ENTER to continue | ESC to exit | Ctrl-C to quit]",
+)
+CONFIG_LIST_INSTRUCTION: str = format_prompt_instruction(
+	"Choose which Reminders lists appear when creating a list.",
+	"[SPACE to add/remove lists | ENTER to save | ESC to return | Ctrl-C to quit]",
+)
+COLOR_MENU_INSTRUCTION: str = format_prompt_instruction(
+	"Choose the colors used by ListKit prompts and terminal output.",
+	"[↑↓ + ENTER to edit | ESC to return | Ctrl-C to quit]",
+)
 COLOR_PICKER_CONTROLS: str = "[ENTER to save | ESC to return | Ctrl-C to quit]"
-OPTIONS_MENU_INSTRUCTION: str = "\n[ENTER to edit | ESC to return | Ctrl-C to quit]\n"
-UPDATE_MENU_INSTRUCTION: str = "\n[ENTER to select | ESC to return | Ctrl-C to quit]\n"
+COLOR_PICKER_HEX_NOTE: str = "For custom hex colors, edit config.json directly."
+OPTIONS_MENU_INSTRUCTION: str = format_prompt_instruction(
+	"Choose the default behavior used when creating lists.",
+	"[↑↓ + ENTER to edit | ESC to return | Ctrl-C to quit]",
+)
+UPDATE_MENU_INSTRUCTION: str = format_prompt_instruction(
+	"Review this release, then update, skip, or go back.",
+	"[↑↓ + ENTER to select | ESC to return | Ctrl-C to quit]",
+)
 TRUNCATED_SAMPLE_LENGTH: int = 11
 CONFIG_COLOR_OPTIONS: tuple[str, ...] = (
 	"black",
@@ -148,7 +179,7 @@ def configure_questionary_checkbox_rendering() -> None:
 			if isinstance(choice, common.Separator):
 				tokens.append(("class:separator", f"{choice.title}"))
 			elif choice.disabled:
-				disabled_style = "class:highlighted" if pointed_at else "class:selected" if selected else "class:disabled"
+				disabled_style = "class:selected" if selected else "class:disabled"
 				if isinstance(choice.title, list):
 					tokens.append((disabled_style, "- "))
 					tokens.extend(choice.title)
@@ -162,17 +193,15 @@ def configure_questionary_checkbox_rendering() -> None:
 
 				if selected:
 					indicator = f"{common.INDICATOR_SELECTED} " if self.use_indicator else ""
-					indicator_style = "class:highlighted" if pointed_at else "class:selected"
+					indicator_style = "class:selected"
 				else:
 					indicator = f"{common.INDICATOR_UNSELECTED} " if self.use_indicator else ""
-					indicator_style = "class:highlighted" if pointed_at else "class:text"
+					indicator_style = "class:text"
 
 				tokens.append((indicator_style, indicator))
 
 				if isinstance(choice.title, list):
 					tokens.extend(choice.title)
-				elif pointed_at:
-					tokens.append(("class:highlighted", f"{shortcut}{choice.title}"))
 				elif selected:
 					tokens.append(("class:selected", f"{shortcut}{choice.title}"))
 				else:
@@ -233,7 +262,11 @@ def main() -> int:
 
 	if args.short_name == "config":
 		try:
-			return run_config_editor(config_path, config, prompt_style=build_prompt_style(config.selection_color))
+			config_result: str = run_config_editor(config_path, config, prompt_style=build_prompt_style(config.selection_color))
+			if config_result == RETURN_TO_LISTKIT_CHOICE:
+				config = load_config(config_path)
+				return run_listkit_flow(None, config, templates_path)
+			return 0
 		except ConfigExit:
 			return 0
 		except ShopAbort:
@@ -243,6 +276,10 @@ def main() -> int:
 			print(f"Error: {error}", file=sys.stderr)
 			return 1
 
+	return run_listkit_flow(args.short_name, config, templates_path)
+
+
+def run_listkit_flow(short_name: str | None, config: Config, templates_path: Path) -> int:
 	try:
 		templates: dict[str, dict[str, Any]] = load_templates(templates_path)
 	except TemplateLoadError as error:
@@ -252,24 +289,20 @@ def main() -> int:
 	try:
 		prompt_style = build_prompt_style(config.selection_color)
 		print()
-		if args.short_name is None:
-			print(style_instruction(START_INSTRUCTION))
-			print()
+		if short_name is None:
 			template = select_template(templates, prompt_style=prompt_style)
 		else:
 			try:
-				match: tuple[str, dict[str, Any]] | None = find_template_by_short_name(templates, args.short_name)
+				match: tuple[str, dict[str, Any]] | None = find_template_by_short_name(templates, short_name)
 			except TemplateLoadError as error:
 				print(f"Error: {error}", file=sys.stderr)
 				return 1
 
 			if match is None:
-				print(render_missing_template_error(args.short_name, templates), file=sys.stderr)
+				print(render_missing_template_error(short_name, templates), file=sys.stderr)
 				return 1
 
 			_template_id, template = match
-			print(style_instruction(START_INSTRUCTION))
-			print()
 			print_selected_template(template["name"], config.selection_color)
 
 		batch_size: float | None = None
@@ -397,14 +430,21 @@ def resolve_templates_path(project_dir: Path) -> Path:
 def render_delivery_result(result: DeliveryResult) -> str:
 	item_label: str = "item" if len(result.created_items) == 1 else "items"
 	omitted_label: str = "item" if len(result.omitted_items) == 1 else "items"
+	list_name: str = format_delivery_result_list_name(result.target_name)
 
 	return "\n".join(
 		[
-			f"Created: {result.target_name}",
-			f"Included: {len(result.created_items)} {item_label}",
-			f"Omitted: {len(result.omitted_items)} {omitted_label}",
+			style_instruction(f"{len(result.created_items)} {item_label} added to {list_name}"),
+			style_instruction(f"{len(result.omitted_items)} {omitted_label} omitted"),
 		]
 	)
+
+
+def format_delivery_result_list_name(target_name: str) -> str:
+	if ": " not in target_name:
+		return target_name
+
+	return target_name.split(": ", 1)[1]
 
 
 def render_help(config: Config) -> str:
@@ -488,35 +528,40 @@ def select_template(templates: dict[str, dict[str, Any]], prompt_style=None) -> 
 	selection = questionary.select(
 		"",
 		choices=choices,
-		instruction=SELECT_INSTRUCTION,
+		instruction=SELECT_TEMPLATE_INSTRUCTION,
 		pointer=">",
 		qmark="Select a Template",
 		style=prompt_style,
 	)
+	bind_escape_value(selection, ABORT_CHOICE)
 	return require_selection(ask_or_abort(selection))
 
 
-def run_config_editor(config_path: Path, config: Config, prompt_style=None) -> int:
+def run_config_editor(config_path: Path, config: Config, prompt_style=None) -> str:
 	update_status: UpdateStatus = get_update_status(config)
 	while True:
 		print()
 		selection = questionary.select(
 			"",
 			choices=[
-				questionary.Choice(title="Reminders Lists", value="reminders_lists"),
-				questionary.Choice(title="Colors", value="colors"),
-				questionary.Choice(title="Options", value="options"),
+				questionary.Choice(title="Select Lists", value="reminders_lists"),
+				questionary.Choice(title="Set Colors", value="colors"),
+				questionary.Choice(title="Set Defaults", value="options"),
 				questionary.Choice(title=format_update_menu_title(update_status), value="updates"),
+				return_to_listkit_choice(),
 				exit_config_choice(),
 			],
-			instruction=SELECT_INSTRUCTION,
+			instruction=CONFIG_MENU_INSTRUCTION,
 			pointer=">",
 			qmark="Config",
 			style=prompt_style,
 		)
+		bind_escape_value(selection, EXIT_CONFIG_CHOICE)
 		action = require_config_selection(ask_or_abort(selection))
 		if action == EXIT_CONFIG_CHOICE:
-			return 0
+			return EXIT_CONFIG_CHOICE
+		if action == RETURN_TO_LISTKIT_CHOICE:
+			return RETURN_TO_LISTKIT_CHOICE
 
 		if action == "reminders_lists":
 			config = edit_reminders_list_visibility(config, prompt_style=prompt_style)
@@ -683,10 +728,14 @@ def edit_reminders_list_visibility(config: Config, prompt_style=None) -> Config:
 		choices=choices,
 		instruction=CONFIG_LIST_INSTRUCTION,
 		pointer=">",
-		qmark="Visible Reminder Lists",
+		qmark="Reminder Lists > Select Lists",
 		style=prompt_style,
 	)
+	bind_escape_value(selection, BACK_CONFIG_CHECKBOX_CHOICE)
 	visible_ids: set[str] = set(require_selection(ask_or_abort(selection)))
+	if visible_ids == set(BACK_CONFIG_CHECKBOX_CHOICE):
+		return config
+
 	return replace(
 		config,
 		hidden_apple_reminders_list_ids=[
@@ -703,19 +752,19 @@ def edit_color_settings(config_path: Path, config: Config, prompt_style=None) ->
 			"",
 			choices=[
 				questionary.Choice(
-					title=f"Standard Text Color: {format_config_color_value(config, 'standard_text_color')}",
+					title=color_setting_choice_title(config, "Standard Text Color", "standard_text_color"),
 					value="standard_text_color",
 				),
 				questionary.Choice(
-					title=f"Quantity Color: {format_config_color_value(config, 'quantity_color')}",
+					title=color_setting_choice_title(config, "Quantity Color", "quantity_color"),
 					value="quantity_color",
 				),
 				questionary.Choice(
-					title=f"Selection Color: {format_config_color_value(config, 'selection_color')}",
+					title=color_setting_choice_title(config, "Selection Color", "selection_color"),
 					value="selection_color",
 				),
 				questionary.Choice(
-					title=f"Omitted Ingredient Color: {format_config_color_value(config, 'omitted_ingredient_color')}",
+					title=color_setting_choice_title(config, "Omitted Ingredient Color", "omitted_ingredient_color"),
 					value="omitted_ingredient_color",
 				),
 				back_config_choice(),
@@ -786,7 +835,7 @@ def edit_options(config_path: Path, config: Config, prompt_style=None) -> Config
 			],
 			instruction=OPTIONS_MENU_INSTRUCTION,
 			pointer=">",
-			qmark="Options",
+			qmark="Set Defaults",
 			style=prompt_style,
 		)
 		bind_escape_value(selection, BACK_CONFIG_CHOICE)
@@ -815,7 +864,13 @@ def edit_default_reminders_list(config: Config, prompt_style=None) -> Config:
 		visible_targets,
 		omitted_count=len(targets) - len(visible_targets),
 		prompt_style=prompt_style,
+		qmark="Set Default List",
+		exit_choice=back_config_choice(),
+		instruction_description="Choose the Reminders list selected by default.",
 	)
+	if target == BACK_CONFIG_CHOICE:
+		return config
+
 	return replace(
 		config,
 		apple_reminders_list_id=target.identifier,
@@ -828,13 +883,14 @@ def edit_bool_option(config: Config, setting_name: str, prompt_style=None) -> Co
 	choices: list[questionary.Choice] = [
 		questionary.Choice(title="Yes", value=True),
 		questionary.Choice(title="No", value=False),
+		back_config_choice(),
 	]
 	default_choice: questionary.Choice = choices[0] if current_value else choices[1]
 	selection = questionary.select(
 		"",
 		choices=choices,
 		default=default_choice,
-		instruction=SELECT_INSTRUCTION,
+		instruction=format_bool_option_instruction(setting_name),
 		pointer=">",
 		qmark=format_config_setting_name(setting_name),
 		style=prompt_style,
@@ -855,8 +911,13 @@ def prompt_for_batch_size(recipe: dict[str, Any], prompt_style=None) -> float:
 		default=default_display,
 		validate=validate_batch_size,
 		qmark="Batch Size",
+		instruction=format_prompt_instruction(
+			"Enter the batch size for this template.",
+			"[ENTER to accept default | ESC to exit | Ctrl-C to quit]",
+		),
 		style=prompt_style,
 	)
+	bind_escape_value(prompt, ABORT_CHOICE)
 
 	selection = require_selection(ask_or_abort(prompt)).strip()
 	if selection == "":
@@ -873,11 +934,15 @@ def prompt_for_include_on_hand(default: bool, prompt_style=None) -> bool:
 	selection = questionary.select(
 		"",
 		choices=choices,
-		instruction=SELECT_INSTRUCTION,
+		instruction=format_prompt_instruction(
+			"Choose whether on-hand items should start selected.",
+			"[↑↓ + ENTER to select | ESC to exit | Ctrl-C to quit]",
+		),
 		pointer=">",
 		qmark="Include All On-Hand Items",
 		style=prompt_style,
 	)
+	bind_escape_value(selection, ABORT_CHOICE)
 	return require_selection(ask_or_abort(selection))
 
 
@@ -886,7 +951,10 @@ def select_delivery_target(
 	options: list[DeliveryTargetOption],
 	omitted_count: int = 0,
 	prompt_style=None,
-) -> DeliveryTargetOption:
+	qmark: str = "Choose Reminder List",
+	exit_choice=None,
+	instruction_description: str = "Choose where the final items should be added.",
+) -> DeliveryTargetOption | str:
 	print()
 	name_counts: Counter[str] = Counter(option.name for option in options)
 	choices: list[questionary.Choice] = []
@@ -901,31 +969,49 @@ def select_delivery_target(
 			default_choice = choice
 
 	choices.append(create_new_list_choice())
-	choices.append(abort_choice())
+	navigation_choice = exit_choice or abort_choice()
+	choices.append(navigation_choice)
 	selection = questionary.select(
 		"",
 		choices=choices,
 		default=default_choice,
-		instruction=format_omitted_list_instruction(omitted_count),
+		instruction=format_delivery_target_instruction(
+			instruction_description,
+			omitted_count,
+			escape_action="return" if navigation_choice.value == BACK_CONFIG_CHOICE else "exit",
+		),
 		pointer=">",
-		qmark="Choose Reminder List",
+		qmark=qmark,
 		style=prompt_style,
 	)
-	selected_target: DeliveryTargetOption = require_selection(ask_or_abort(selection))
+	bind_escape_value(selection, navigation_choice.value)
+	selected_target: DeliveryTargetOption | str = require_selection(ask_or_abort(selection))
+	if selected_target == BACK_CONFIG_CHOICE:
+		return BACK_CONFIG_CHOICE
+
 	if selected_target.identifier != CREATE_NEW_LIST_IDENTIFIER:
 		return selected_target
 
-	return prompt_for_new_delivery_target(prompt_style=prompt_style)
+	return prompt_for_new_delivery_target(prompt_style=prompt_style, escape_value=navigation_choice.value)
 
 
-def prompt_for_new_delivery_target(prompt_style=None) -> DeliveryTargetOption:
+def prompt_for_new_delivery_target(prompt_style=None, escape_value: str = ABORT_CHOICE) -> DeliveryTargetOption | str:
 	prompt = questionary.text(
 		"",
 		validate=validate_new_list_name,
 		qmark="New Reminder List",
+		instruction=format_prompt_instruction(
+			"Enter a name for the new Reminders list.",
+			f"[ENTER to create | ESC to {escape_control_word(escape_value)} | Ctrl-C to quit]",
+		),
 		style=prompt_style,
 	)
-	list_name: str = require_selection(ask_or_abort(prompt)).strip()
+	bind_escape_value(prompt, escape_value)
+	selection = ask_or_abort(prompt)
+	if selection == BACK_CONFIG_CHOICE:
+		return BACK_CONFIG_CHOICE
+
+	list_name: str = require_selection(selection).strip()
 	if list_name.casefold() in ABORT_COMMANDS:
 		raise ShopAbort()
 
@@ -959,6 +1045,7 @@ def prompt_for_ingredient_items(shopping_list: ShoppingList, prompt_style=None) 
 		qmark="Choose Items",
 		style=prompt_style,
 	)
+	bind_escape_value(selection, ABORT_CHOICE)
 	selection = ask_or_abort(selection)
 	return require_selection(selection)
 
@@ -1028,12 +1115,35 @@ def truncate_sample_item(item: str) -> str:
 	return f"{item[:TRUNCATED_SAMPLE_LENGTH]}..."
 
 
-def format_omitted_list_instruction(omitted_count: int) -> str:
-	if omitted_count == 0:
-		return SELECT_INSTRUCTION
+def format_delivery_target_instruction(description: str, omitted_count: int, escape_action: str = "exit") -> str:
+	lines: list[str] = [description]
+	if omitted_count > 0:
+		lines.append(format_omitted_list_note(omitted_count))
+	lines.append(f"[↑↓ + ENTER to select | ESC to {escape_action} | Ctrl-C to quit]")
+	return "\n" + "\n".join(lines) + "\n"
 
+
+def format_omitted_list_note(omitted_count: int) -> str:
 	list_label: str = "list" if omitted_count == 1 else "lists"
 	return f"{omitted_count} {list_label} omitted per config.json"
+
+
+def format_bool_option_instruction(setting_name: str) -> str:
+	descriptions: dict[str, str] = {
+		"include_on_hand_default": "Choose whether on-hand items are selected by default.",
+		"append_short_name": "Choose whether template short names are appended to reminder items.",
+	}
+	return format_prompt_instruction(
+		descriptions.get(setting_name, "Choose the default value for this setting."),
+		"[↑↓ + ENTER to select | ESC to return | Ctrl-C to quit]",
+	)
+
+
+def escape_control_word(escape_value: str) -> str:
+	if escape_value == BACK_CONFIG_CHOICE:
+		return "return"
+
+	return "exit"
 
 
 def abort_choice():
@@ -1057,11 +1167,15 @@ def create_new_list_choice():
 
 
 def exit_config_choice():
-	return questionary.Choice(title=EXIT_CONFIG_TITLE, value=EXIT_CONFIG_CHOICE)
+	return questionary.Choice(title=[("class:app-action", EXIT_CONFIG_TITLE)], value=EXIT_CONFIG_CHOICE)
+
+
+def return_to_listkit_choice():
+	return questionary.Choice(title=[("class:app-action", RETURN_TO_LISTKIT_TITLE)], value=RETURN_TO_LISTKIT_CHOICE)
 
 
 def back_config_choice():
-	return questionary.Choice(title=BACK_CONFIG_TITLE, value=BACK_CONFIG_CHOICE)
+	return questionary.Choice(title=[("class:app-action", BACK_CONFIG_TITLE)], value=BACK_CONFIG_CHOICE)
 
 
 def color_choice(color_name: str, is_default: bool = False):
@@ -1097,11 +1211,30 @@ def format_config_color_value(config: Config, setting_name: str) -> str:
 	return color_name
 
 
+def format_config_color_menu_value(config: Config, setting_name: str) -> str:
+	return normalize_config_color(setting_name, getattr(config, setting_name))
+
+
+def color_setting_choice_title(config: Config, label: str, setting_name: str) -> list[tuple[str, str]]:
+	color_value: str = format_config_color_menu_value(config, setting_name)
+	return [
+		("class:text", f"{label}: "),
+		(color_title_style(color_value), color_value),
+	]
+
+
 def bind_escape_value(prompt, value) -> None:
 	if not hasattr(prompt, "application"):
 		return
 
-	@prompt.application.key_bindings.add(Keys.Escape, eager=True)
+	key_bindings = prompt.application.key_bindings
+	if hasattr(key_bindings, "add"):
+		registry = key_bindings
+	else:
+		registry = KeyBindings()
+		prompt.application.key_bindings = merge_key_bindings([key_bindings, registry])
+
+	@registry.add(Keys.Escape, eager=True)
 	def _(event):
 		event.app.exit(result=value)
 
@@ -1122,7 +1255,7 @@ def validate_new_list_name(value: str) -> bool | str:
 
 
 def format_color_setting_instruction(setting_name: str) -> str:
-	return f"\n{COLOR_SETTING_INSTRUCTIONS[setting_name]}\n{COLOR_PICKER_CONTROLS}\n"
+	return f"\n{COLOR_SETTING_INSTRUCTIONS[setting_name]}\n{COLOR_PICKER_HEX_NOTE}\n{COLOR_PICKER_CONTROLS}\n"
 
 
 def style_instruction(value: str) -> str:
@@ -1167,14 +1300,14 @@ def build_prompt_style(color_name: str):
 		"instruction": "ansibrightblack",
 		"qmark": "bold",
 		"question": "bold",
+		"highlighted": "noreverse noinherit",
 	}
 	for color_option in NAMED_COLORS:
 		ansi_color: str = prompt_color_style(color_option)
 		if ansi_color != "":
 			styles[f"color-{color_option}"] = f"{ansi_color} noinherit"
 	if color != "":
-		styles["pointer"] = f"{color} noinherit"
-		styles["highlighted"] = f"{color} noreverse noinherit"
+		styles["pointer"] = f"{color} bold noinherit"
 
 	return questionary.Style.from_dict(styles)
 

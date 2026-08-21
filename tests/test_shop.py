@@ -113,24 +113,58 @@ def test_select_template_displays_template_names_without_short_names(monkeypatch
 
 	def fake_select(*args, **kwargs):
 		captured["choices"] = kwargs["choices"]
+		captured["instruction"] = kwargs["instruction"]
 		return FakePrompt(template)
 
 	monkeypatch.setattr(shop_script.questionary, "select", fake_select)
 
 	assert shop_script.select_template({"chili": template}) == template
 	assert captured["choices"][0].title == "Classic Chili"
+	assert captured["instruction"] == shop_script.SELECT_TEMPLATE_INSTRUCTION
+
+
+def test_select_template_escape_aborts(monkeypatch) -> None:
+	monkeypatch.setattr(shop_script.questionary, "select", lambda *args, **kwargs: FakePrompt(shop_script.ABORT_CHOICE))
+
+	try:
+		shop_script.select_template({"chili": {"name": "Classic Chili"}})
+	except shop_script.ShopAbort:
+		pass
+	else:
+		raise AssertionError("Expected ShopAbort")
 
 
 def test_prompt_for_include_on_hand_uses_false_default(monkeypatch) -> None:
-	monkeypatch.setattr(shop_script.questionary, "select", lambda *args, **kwargs: FakePrompt(False))
+	captured = {}
+
+	def fake_select(*args, **kwargs):
+		captured["instruction"] = kwargs["instruction"]
+		return FakePrompt(False)
+
+	monkeypatch.setattr(shop_script.questionary, "select", fake_select)
 
 	assert shop_script.prompt_for_include_on_hand(default=False) is False
+	assert captured["instruction"] == (
+		"\nChoose whether on-hand items should start selected.\n"
+		"[↑↓ + ENTER to select | ESC to exit | Ctrl-C to quit]\n"
+	)
 
 
 def test_prompt_for_include_on_hand_uses_true_default(monkeypatch) -> None:
 	monkeypatch.setattr(shop_script.questionary, "select", lambda *args, **kwargs: FakePrompt(True))
 
 	assert shop_script.prompt_for_include_on_hand(default=True) is True
+
+
+def test_prompt_for_include_on_hand_escape_aborts(monkeypatch) -> None:
+	monkeypatch.setattr(shop_script.questionary, "select", lambda *args, **kwargs: FakePrompt(shop_script.ABORT_CHOICE))
+
+	try:
+		shop_script.prompt_for_include_on_hand(default=False)
+	except shop_script.ShopAbort:
+		pass
+	else:
+		raise AssertionError("Expected ShopAbort")
 
 
 def test_prompt_for_batch_size_returns_questionary_value(monkeypatch) -> None:
@@ -147,6 +181,17 @@ def test_prompt_for_batch_size_uses_default_on_empty_selection(monkeypatch) -> N
 
 def test_prompt_for_batch_size_can_abort(monkeypatch) -> None:
 	monkeypatch.setattr(shop_script.questionary, "text", lambda *args, **kwargs: FakePrompt("q"))
+
+	try:
+		shop_script.prompt_for_batch_size({"default_batch": 3})
+	except shop_script.ShopAbort:
+		pass
+	else:
+		raise AssertionError("Expected ShopAbort")
+
+
+def test_prompt_for_batch_size_escape_aborts(monkeypatch) -> None:
+	monkeypatch.setattr(shop_script.questionary, "text", lambda *args, **kwargs: FakePrompt(shop_script.ABORT_CHOICE))
 
 	try:
 		shop_script.prompt_for_batch_size({"default_batch": 3})
@@ -231,6 +276,25 @@ def test_prompt_for_ingredient_items_starts_on_first_item_when_on_hand_is_includ
 	assert captured["initial_choice"] == captured["choices"][0]
 
 
+def test_prompt_for_ingredient_items_escape_aborts(monkeypatch) -> None:
+	recipe = {
+		"name": "Test Recipe",
+		"short_name": "Test",
+		"ingredients": [
+			{"name": "Apple", "quantity": 1, "always_on_hand": False},
+		],
+	}
+	shopping_list = build_shopping_list(recipe, 1, include_on_hand=True)
+	monkeypatch.setattr(shop_script.questionary, "checkbox", lambda *args, **kwargs: FakePrompt(shop_script.ABORT_CHOICE))
+
+	try:
+		shop_script.prompt_for_ingredient_items(shopping_list)
+	except shop_script.ShopAbort:
+		pass
+	else:
+		raise AssertionError("Expected ShopAbort")
+
+
 def test_without_item_tags_removes_display_tags_without_mutating_source() -> None:
 	recipe = {
 		"name": "Test Recipe",
@@ -270,7 +334,7 @@ def test_render_final_ingredient_list_excludes_recipe_title() -> None:
 	)
 
 
-def test_checked_active_checkbox_row_uses_highlighted_style() -> None:
+def test_checked_active_checkbox_row_keeps_semantic_style() -> None:
 	control = shop_script.questionary.prompts.common.InquirerControl(
 		[shop_script.questionary.Choice(title="Salt", value=0)],
 		pointer=">",
@@ -280,15 +344,16 @@ def test_checked_active_checkbox_row_uses_highlighted_style() -> None:
 
 	tokens = control._get_choice_tokens()
 
-	assert ("class:highlighted", "[x] ") in tokens
-	assert ("class:highlighted", "Salt") in tokens
-	assert ("class:selected", "Salt") not in tokens
+	assert ("class:pointer", " > ") in tokens
+	assert ("class:selected", "[x] ") in tokens
+	assert ("class:selected", "Salt") in tokens
+	assert ("class:highlighted", "Salt") not in tokens
 
 
-def test_abort_choice_uses_app_action_label() -> None:
+def test_abort_choice_uses_exit_app_action_label() -> None:
 	choice = shop_script.abort_choice()
 
-	assert choice.title == [("class:app-action", "[ ! Abort ]")]
+	assert choice.title == [("class:app-action", "[ ← Exit ListKit ]")]
 	assert choice.value == shop_script.ABORT_CHOICE
 
 
@@ -329,9 +394,15 @@ def test_select_delivery_target_defaults_to_configured_list_and_details_duplicat
 		captured["choices"] = kwargs["choices"]
 		captured["default"] = kwargs["default"]
 		captured["instruction"] = kwargs["instruction"]
+		captured["qmark"] = kwargs["qmark"]
 		return FakePrompt(options[1])
 
+	def fake_bind_escape_value(prompt, value) -> None:
+		captured["escape_prompt"] = prompt
+		captured["escape_value"] = value
+
 	monkeypatch.setattr(shop_script.questionary, "select", fake_select)
+	monkeypatch.setattr(shop_script, "bind_escape_value", fake_bind_escape_value)
 
 	assert shop_script.select_delivery_target("Test", options, omitted_count=2) == options[1]
 	assert captured["choices"][0].title == "General (1)"
@@ -339,7 +410,14 @@ def test_select_delivery_target_defaults_to_configured_list_and_details_duplicat
 	assert captured["choices"][2].title == "Test (0)"
 	assert captured["choices"][3].title == [("class:app-action", "[ + Create New List ]")]
 	assert captured["default"] == captured["choices"][1]
-	assert captured["instruction"] == "2 lists omitted per config.json"
+	assert captured["instruction"] == (
+		"\nChoose where the final items should be added.\n"
+		"2 lists omitted per config.json\n"
+		"[↑↓ + ENTER to select | ESC to exit | Ctrl-C to quit]\n"
+	)
+	assert captured["qmark"] == "Choose Reminder List"
+	assert captured["escape_prompt"] is not None
+	assert captured["escape_value"] == shop_script.ABORT_CHOICE
 
 
 def test_select_delivery_target_can_create_new_list(monkeypatch) -> None:
@@ -420,6 +498,52 @@ def test_select_delivery_target_can_abort(monkeypatch) -> None:
 		raise AssertionError("Expected ShopAbort")
 
 
+def test_select_delivery_target_binds_escape_to_custom_back_choice(monkeypatch) -> None:
+	options = [
+		DeliveryTargetOption(
+			identifier="list-1",
+			name="General",
+			source="iCloud",
+			item_count=1,
+			sample_items=[],
+		),
+	]
+	captured = {}
+
+	def fake_select(*args, **kwargs):
+		captured["qmark"] = kwargs["qmark"]
+		return FakePrompt(options[0])
+
+	def fake_bind_escape_value(prompt, value) -> None:
+		captured["escape_prompt"] = prompt
+		captured["escape_value"] = value
+
+	monkeypatch.setattr(shop_script.questionary, "select", fake_select)
+	monkeypatch.setattr(shop_script, "bind_escape_value", fake_bind_escape_value)
+
+	assert (
+		shop_script.select_delivery_target(
+			"General",
+			options,
+			qmark="Set Default List",
+			exit_choice=shop_script.back_config_choice(),
+		)
+		== options[0]
+	)
+	assert captured["qmark"] == "Set Default List"
+	assert captured["escape_prompt"] is not None
+	assert captured["escape_value"] == shop_script.BACK_CONFIG_CHOICE
+
+
+def test_prompt_for_new_delivery_target_escape_can_return_back(monkeypatch) -> None:
+	monkeypatch.setattr(shop_script.questionary, "text", lambda *args, **kwargs: FakePrompt(shop_script.BACK_CONFIG_CHOICE))
+
+	assert (
+		shop_script.prompt_for_new_delivery_target(escape_value=shop_script.BACK_CONFIG_CHOICE)
+		== shop_script.BACK_CONFIG_CHOICE
+	)
+
+
 def test_edit_reminders_list_visibility_stores_hidden_ids(monkeypatch) -> None:
 	options = [
 		DeliveryTargetOption(
@@ -445,10 +569,17 @@ def test_edit_reminders_list_visibility_stores_hidden_ids(monkeypatch) -> None:
 
 	def fake_checkbox(*args, **kwargs):
 		captured["choices"] = kwargs["choices"]
+		captured["qmark"] = kwargs["qmark"]
+		captured["instruction"] = kwargs["instruction"]
 		return FakePrompt(["list-1"])
+
+	def fake_bind_escape_value(prompt, value) -> None:
+		captured["escape_prompt"] = prompt
+		captured["escape_value"] = value
 
 	monkeypatch.setattr(shop_script, "AppleRemindersTarget", FakeAppleRemindersTarget)
 	monkeypatch.setattr(shop_script.questionary, "checkbox", fake_checkbox)
+	monkeypatch.setattr(shop_script, "bind_escape_value", fake_bind_escape_value)
 
 	config = shop_script.edit_reminders_list_visibility(
 		Config(hidden_apple_reminders_list_ids=["list-2"]),
@@ -456,7 +587,38 @@ def test_edit_reminders_list_visibility_stores_hidden_ids(monkeypatch) -> None:
 
 	assert captured["choices"][0].checked is True
 	assert captured["choices"][1].checked is False
+	assert captured["qmark"] == "Reminder Lists > Select Lists"
+	assert "add/remove lists" in captured["instruction"]
+	assert captured["escape_prompt"] is not None
+	assert captured["escape_value"] == shop_script.BACK_CONFIG_CHECKBOX_CHOICE
 	assert config.hidden_apple_reminders_list_ids == ["list-2"]
+
+
+def test_edit_reminders_list_visibility_escape_returns_existing_config(monkeypatch) -> None:
+	options = [
+		DeliveryTargetOption(
+			identifier="list-1",
+			name="General",
+			source="iCloud",
+			item_count=1,
+			sample_items=[],
+		),
+	]
+
+	class FakeAppleRemindersTarget:
+		def list_targets(self):
+			return options
+
+	monkeypatch.setattr(shop_script, "AppleRemindersTarget", FakeAppleRemindersTarget)
+	monkeypatch.setattr(
+		shop_script.questionary,
+		"checkbox",
+		lambda *args, **kwargs: FakePrompt(shop_script.BACK_CONFIG_CHECKBOX_CHOICE),
+	)
+
+	config = Config(hidden_apple_reminders_list_ids=["list-1"])
+
+	assert shop_script.edit_reminders_list_visibility(config) == config
 
 
 def test_run_config_editor_returns_to_menu_after_saving(monkeypatch, tmp_path) -> None:
@@ -480,7 +642,7 @@ def test_run_config_editor_returns_to_menu_after_saving(monkeypatch, tmp_path) -
 		lambda config: shop_script.UpdateStatus(current_version="0.1.4"),
 	)
 
-	assert shop_script.run_config_editor(config_path, Config()) == 0
+	assert shop_script.run_config_editor(config_path, Config()) == shop_script.EXIT_CONFIG_CHOICE
 	assert menu_count == 2
 
 
@@ -504,7 +666,7 @@ def test_run_config_editor_saves_color_setting_and_returns_to_menu(monkeypatch, 
 		lambda config: shop_script.UpdateStatus(current_version="0.1.4"),
 	)
 
-	assert shop_script.run_config_editor(config_path, Config()) == 0
+	assert shop_script.run_config_editor(config_path, Config()) == shop_script.EXIT_CONFIG_CHOICE
 	assert load_config(config_path).quantity_color == "cyan"
 
 
@@ -528,7 +690,7 @@ def test_run_config_editor_saves_option_setting_and_returns_to_menu(monkeypatch,
 		lambda config: shop_script.UpdateStatus(current_version="0.1.4"),
 	)
 
-	assert shop_script.run_config_editor(config_path, Config()) == 0
+	assert shop_script.run_config_editor(config_path, Config()) == shop_script.EXIT_CONFIG_CHOICE
 	assert load_config(config_path).append_short_name is False
 
 
@@ -540,7 +702,12 @@ def test_run_config_editor_shows_update_badge(monkeypatch, tmp_path) -> None:
 		captured["choices"] = kwargs["choices"]
 		return FakePrompt(shop_script.EXIT_CONFIG_CHOICE)
 
+	def fake_bind_escape_value(prompt, value) -> None:
+		captured["escape_prompt"] = prompt
+		captured["escape_value"] = value
+
 	monkeypatch.setattr(shop_script.questionary, "select", fake_select)
+	monkeypatch.setattr(shop_script, "bind_escape_value", fake_bind_escape_value)
 	monkeypatch.setattr(
 		shop_script,
 		"get_update_status",
@@ -555,8 +722,15 @@ def test_run_config_editor_shows_update_badge(monkeypatch, tmp_path) -> None:
 		),
 	)
 
-	assert shop_script.run_config_editor(config_path, Config()) == 0
+	assert shop_script.run_config_editor(config_path, Config()) == shop_script.EXIT_CONFIG_CHOICE
+	assert captured["choices"][0].title == "Select Lists"
+	assert captured["choices"][1].title == "Set Colors"
+	assert captured["choices"][2].title == "Set Defaults"
 	assert captured["choices"][3].title == "Check for Updates (1)"
+	assert captured["choices"][4].title == [("class:app-action", "[ ↩ Return to ListKit ]")]
+	assert captured["choices"][5].title == [("class:app-action", "[ ← Exit Config Menu ]")]
+	assert captured["escape_prompt"] is not None
+	assert captured["escape_value"] == shop_script.EXIT_CONFIG_CHOICE
 
 
 def test_handle_update_check_can_skip_release(monkeypatch, tmp_path) -> None:
@@ -661,11 +835,25 @@ def test_render_update_changelog_includes_release_notes() -> None:
 	)
 
 
-def test_exit_config_choice_uses_plain_exit_label() -> None:
+def test_exit_config_choice_uses_app_action_label() -> None:
 	choice = shop_script.exit_config_choice()
 
-	assert choice.title == "Exit Config Menu"
+	assert choice.title == [("class:app-action", "[ ← Exit Config Menu ]")]
 	assert choice.value == shop_script.EXIT_CONFIG_CHOICE
+
+
+def test_return_to_listkit_choice_uses_app_action_label() -> None:
+	choice = shop_script.return_to_listkit_choice()
+
+	assert choice.title == [("class:app-action", "[ ↩ Return to ListKit ]")]
+	assert choice.value == shop_script.RETURN_TO_LISTKIT_CHOICE
+
+
+def test_back_config_choice_uses_app_action_label() -> None:
+	choice = shop_script.back_config_choice()
+
+	assert choice.title == [("class:app-action", "[ ← Back ]")]
+	assert choice.value == shop_script.BACK_CONFIG_CHOICE
 
 
 def test_edit_color_settings_updates_selected_color_and_returns_to_color_menu(monkeypatch, tmp_path) -> None:
@@ -685,10 +873,15 @@ def test_edit_color_settings_updates_selected_color_and_returns_to_color_menu(mo
 	assert load_config(config_path).quantity_color == "cyan"
 	assert captured[0]["qmark"] == "Colors"
 	assert captured[0]["instruction"] == shop_script.COLOR_MENU_INSTRUCTION
+	assert captured[0]["choices"][1].title == [
+		("class:text", "Quantity Color: "),
+		("class:color-green", "green"),
+	]
 	assert captured[1]["qmark"] == "Quantity Color"
 	assert captured[1]["default"].value == "green"
 	assert captured[1]["instruction"] == (
 		"\nUsed for quantities and units in terminal ingredient lists.\n"
+		"For custom hex colors, edit config.json directly.\n"
 		"[ENTER to save | ESC to return | Ctrl-C to quit]\n"
 	)
 	assert captured[1]["choices"][0].title == [("#37b7f0", "#37b7f0 (default)")]
@@ -732,9 +925,27 @@ def test_format_config_color_value_marks_setting_default() -> None:
 	)
 
 
+def test_format_config_color_menu_value_does_not_mark_default() -> None:
+	assert shop_script.format_config_color_menu_value(Config(standard_text_color="#f2f0ea"), "standard_text_color") == (
+		"#f2f0ea"
+	)
+
+
+def test_color_setting_choice_title_colors_only_value() -> None:
+	assert shop_script.color_setting_choice_title(
+		Config(standard_text_color="#f2f0ea"),
+		"Standard Text Color",
+		"standard_text_color",
+	) == [
+		("class:text", "Standard Text Color: "),
+		("#f2f0ea", "#f2f0ea"),
+	]
+
+
 def test_format_color_setting_instruction_includes_context_and_controls() -> None:
 	assert shop_script.format_color_setting_instruction("standard_text_color") == (
 		"\nUsed for regular terminal output text.\n"
+		"For custom hex colors, edit config.json directly.\n"
 		"[ENTER to save | ESC to return | Ctrl-C to quit]\n"
 	)
 
@@ -745,6 +956,15 @@ def test_bind_escape_value_sets_prompt_result() -> None:
 		choices=[shop_script.questionary.Choice(title="Back", value=shop_script.BACK_CONFIG_CHOICE)],
 	)
 	shop_script.bind_escape_value(prompt, shop_script.BACK_CONFIG_CHOICE)
+
+	bindings = prompt.application.key_bindings.get_bindings_for_keys((shop_script.Keys.Escape,))
+
+	assert any(binding.keys == (shop_script.Keys.Escape,) for binding in bindings)
+
+
+def test_bind_escape_value_handles_text_prompt_key_bindings() -> None:
+	prompt = shop_script.questionary.text("")
+	shop_script.bind_escape_value(prompt, shop_script.ABORT_CHOICE)
 
 	bindings = prompt.application.key_bindings.get_bindings_for_keys((shop_script.Keys.Escape,))
 
@@ -766,12 +986,29 @@ def test_edit_options_updates_boolean_setting_and_returns_to_options_menu(monkey
 
 	assert config.append_short_name is False
 	assert load_config(config_path).append_short_name is False
-	assert captured[0]["qmark"] == "Options"
+	assert captured[0]["qmark"] == "Set Defaults"
 	assert captured[0]["instruction"] == shop_script.OPTIONS_MENU_INSTRUCTION
 	assert captured[0]["choices"][2].title == "Append Short Name: Yes"
 	assert captured[1]["qmark"] == "Append Short Name"
 	assert captured[1]["default"].value is True
-	assert captured[2]["qmark"] == "Options"
+	assert captured[1]["instruction"] == (
+		"\nChoose whether template short names are appended to reminder items.\n"
+		"[↑↓ + ENTER to select | ESC to return | Ctrl-C to quit]\n"
+	)
+	assert captured[1]["choices"][2].title == [("class:app-action", "[ ← Back ]")]
+	assert captured[2]["qmark"] == "Set Defaults"
+
+
+def test_edit_bool_option_back_returns_existing_config(monkeypatch) -> None:
+	monkeypatch.setattr(
+		shop_script.questionary,
+		"select",
+		lambda *args, **kwargs: FakePrompt(shop_script.BACK_CONFIG_CHOICE),
+	)
+
+	config = Config(append_short_name=True)
+
+	assert shop_script.edit_bool_option(config, "append_short_name") == config
 
 
 def test_edit_default_reminders_list_updates_name_and_id(monkeypatch) -> None:
@@ -796,10 +1033,21 @@ def test_edit_default_reminders_list_updates_name_and_id(monkeypatch) -> None:
 		def list_targets(self):
 			return options
 
-	def fake_select_delivery_target(target_name, options, omitted_count=0, prompt_style=None):
+	def fake_select_delivery_target(
+		target_name,
+		options,
+		omitted_count=0,
+		prompt_style=None,
+		qmark="",
+		exit_choice=None,
+		instruction_description="",
+	):
 		assert target_name == "General"
 		assert [option.identifier for option in options] == ["list-1"]
 		assert omitted_count == 1
+		assert qmark == "Set Default List"
+		assert exit_choice.title == [("class:app-action", "[ ← Back ]")]
+		assert instruction_description == "Choose the Reminders list selected by default."
 		return options[0]
 
 	monkeypatch.setattr(shop_script, "AppleRemindersTarget", FakeAppleRemindersTarget)
@@ -816,6 +1064,32 @@ def test_edit_default_reminders_list_updates_name_and_id(monkeypatch) -> None:
 	assert config.apple_reminders_list_name == "General"
 
 
+def test_edit_default_reminders_list_back_returns_existing_config(monkeypatch) -> None:
+	options = [
+		DeliveryTargetOption(
+			identifier="list-1",
+			name="General",
+			source="iCloud",
+			item_count=1,
+			sample_items=[],
+		),
+	]
+
+	class FakeAppleRemindersTarget:
+		def list_targets(self):
+			return options
+
+	def fake_select_delivery_target(*args, **kwargs):
+		return shop_script.BACK_CONFIG_CHOICE
+
+	monkeypatch.setattr(shop_script, "AppleRemindersTarget", FakeAppleRemindersTarget)
+	monkeypatch.setattr(shop_script, "select_delivery_target", fake_select_delivery_target)
+
+	config = Config(apple_reminders_list_name="General")
+
+	assert shop_script.edit_default_reminders_list(config) == config
+
+
 def test_format_option_values() -> None:
 	assert shop_script.format_bool_option(True) == "Yes"
 	assert shop_script.format_bool_option(False) == "No"
@@ -827,10 +1101,17 @@ def test_print_selected_template_shows_recipe_selection(capsys) -> None:
 	assert capsys.readouterr().out == "Select a Template  \033[38;2;255;75;31mClassic Chili\033[0m\n"
 
 
-def test_format_omitted_list_instruction_pluralizes_lists() -> None:
-	assert shop_script.format_omitted_list_instruction(0) == shop_script.SELECT_INSTRUCTION
-	assert shop_script.format_omitted_list_instruction(1) == "1 list omitted per config.json"
-	assert shop_script.format_omitted_list_instruction(2) == "2 lists omitted per config.json"
+def test_format_delivery_target_instruction_includes_prose_omitted_count_and_controls() -> None:
+	assert shop_script.format_delivery_target_instruction("Choose a list.", 2) == (
+		"\nChoose a list.\n"
+		"2 lists omitted per config.json\n"
+		"[↑↓ + ENTER to select | ESC to exit | Ctrl-C to quit]\n"
+	)
+
+
+def test_format_omitted_list_note_pluralizes_lists() -> None:
+	assert shop_script.format_omitted_list_note(1) == "1 list omitted per config.json"
+	assert shop_script.format_omitted_list_note(2) == "2 lists omitted per config.json"
 
 
 def test_render_delivery_result_shows_creation_summary() -> None:
@@ -842,10 +1123,13 @@ def test_render_delivery_result_shows_creation_summary() -> None:
 	)
 
 	assert shop_script.render_delivery_result(result) == (
-		"Created: Apple Reminders: Groceries\n"
-		"Included: 2 items\n"
-		"Omitted: 1 item"
+		"\033[90m2 items added to Groceries\033[0m\n"
+		"\033[90m1 item omitted\033[0m"
 	)
+
+
+def test_format_delivery_result_list_name_handles_unprefixed_name() -> None:
+	assert shop_script.format_delivery_result_list_name("Groceries") == "Groceries"
 
 
 def test_format_delivery_target_option_shows_sample_items() -> None:
