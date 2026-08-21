@@ -4,7 +4,7 @@ import importlib.util
 from importlib.machinery import SourceFileLoader
 from pathlib import Path
 
-from src.config import Config
+from src.config import Config, load_config
 from src.delivery import DeliveryResult, DeliveryTargetOption
 from src.formatter import build_shopping_list
 
@@ -312,11 +312,113 @@ def test_run_config_editor_returns_to_menu_after_saving(monkeypatch, tmp_path) -
 	assert menu_count == 2
 
 
+def test_run_config_editor_saves_color_setting_and_returns_to_menu(monkeypatch, tmp_path) -> None:
+	config_path = tmp_path / "config.json"
+	menu_results = iter(["colors", shop_script.EXIT_CONFIG_CHOICE])
+
+	def fake_select(*args, **kwargs):
+		return FakePrompt(next(menu_results))
+
+	def fake_edit_color_settings(config_path, config, prompt_style=None):
+		config = Config(quantity_color="cyan")
+		shop_script.save_config(config_path, config)
+		return config
+
+	monkeypatch.setattr(shop_script.questionary, "select", fake_select)
+	monkeypatch.setattr(shop_script, "edit_color_settings", fake_edit_color_settings)
+
+	assert shop_script.run_config_editor(config_path, Config()) == 0
+	assert load_config(config_path).quantity_color == "cyan"
+
+
 def test_exit_config_choice_uses_plain_exit_label() -> None:
 	choice = shop_script.exit_config_choice()
 
 	assert choice.title == "Exit Config Menu"
 	assert choice.value == shop_script.EXIT_CONFIG_CHOICE
+
+
+def test_edit_color_settings_updates_selected_color_and_returns_to_color_menu(monkeypatch, tmp_path) -> None:
+	config_path = tmp_path / "config.json"
+	results = iter(["quantity_color", "cyan", shop_script.BACK_CONFIG_CHOICE])
+	captured = []
+
+	def fake_select(*args, **kwargs):
+		captured.append(kwargs)
+		return FakePrompt(next(results))
+
+	monkeypatch.setattr(shop_script.questionary, "select", fake_select)
+
+	config = shop_script.edit_color_settings(config_path, Config(quantity_color="green"))
+
+	assert config.quantity_color == "cyan"
+	assert load_config(config_path).quantity_color == "cyan"
+	assert captured[0]["qmark"] == "Colors"
+	assert captured[0]["instruction"] == shop_script.COLOR_MENU_INSTRUCTION
+	assert captured[1]["qmark"] == "Quantity Color"
+	assert captured[1]["default"].value == "green"
+	assert captured[1]["instruction"] == (
+		"\nUsed for quantities and units in terminal ingredient lists.\n"
+		"[ENTER to save | ESC to return | Ctrl-C to quit]\n"
+	)
+	assert captured[1]["choices"][0].title == [("class:color-black", "black")]
+	assert captured[1]["choices"][2].title == [("class:color-green", "green (default)")]
+	assert captured[2]["qmark"] == "Colors"
+
+
+def test_edit_color_settings_can_return_to_config_menu(monkeypatch, tmp_path) -> None:
+	monkeypatch.setattr(
+		shop_script.questionary,
+		"select",
+		lambda *args, **kwargs: FakePrompt(shop_script.BACK_CONFIG_CHOICE),
+	)
+
+	config = Config(quantity_color="green")
+
+	assert shop_script.edit_color_settings(tmp_path / "config.json", config) == config
+
+
+def test_color_choice_displays_color_name_with_matching_style() -> None:
+	choice = shop_script.color_choice("cyan")
+
+	assert choice.title == [("class:color-cyan", "cyan")]
+	assert choice.value == "cyan"
+
+
+def test_color_choice_marks_default_color() -> None:
+	choice = shop_script.color_choice("white", is_default=True)
+
+	assert choice.title == [("class:color-white", "white (default)")]
+	assert choice.value == "white"
+
+
+def test_format_config_color_value_marks_setting_default() -> None:
+	assert shop_script.format_config_color_value(Config(standard_text_color="white"), "standard_text_color") == (
+		"white (default)"
+	)
+	assert shop_script.format_config_color_value(Config(standard_text_color="cyan"), "standard_text_color") == "cyan"
+	assert shop_script.format_config_color_value(Config(standard_text_color="default"), "standard_text_color") == (
+		"white (default)"
+	)
+
+
+def test_format_color_setting_instruction_includes_context_and_controls() -> None:
+	assert shop_script.format_color_setting_instruction("standard_text_color") == (
+		"\nUsed for regular terminal output text.\n"
+		"[ENTER to save | ESC to return | Ctrl-C to quit]\n"
+	)
+
+
+def test_bind_escape_value_sets_prompt_result() -> None:
+	prompt = shop_script.questionary.select(
+		"",
+		choices=[shop_script.questionary.Choice(title="Back", value=shop_script.BACK_CONFIG_CHOICE)],
+	)
+	shop_script.bind_escape_value(prompt, shop_script.BACK_CONFIG_CHOICE)
+
+	bindings = prompt.application.key_bindings.get_bindings_for_keys((shop_script.Keys.Escape,))
+
+	assert any(binding.keys == (shop_script.Keys.Escape,) for binding in bindings)
 
 
 def test_format_omitted_list_instruction_pluralizes_lists() -> None:

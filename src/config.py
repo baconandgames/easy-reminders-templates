@@ -19,7 +19,7 @@ class Config:
 	hidden_apple_reminders_list_ids: list[str] = field(default_factory=list)
 	append_short_name: bool = True
 	include_on_hand_default: bool = False
-	standard_text_color: str = "default"
+	standard_text_color: str = "white"
 	quantity_color: str = "green"
 	omitted_ingredient_color: str = "grey"
 

@@ -11,6 +11,7 @@ from typing import Any
 
 try:
 	import questionary
+	from prompt_toolkit.keys import Keys
 except ModuleNotFoundError:
 	project_dir: Path = Path(__file__).resolve().parent
 	project_venv: Path = project_dir / ".venv"
@@ -42,10 +43,14 @@ ABORT_CHOICE: str = "__abort__"
 ABORT_TITLE: str = "[!] ABORT"
 EXIT_CONFIG_CHOICE: str = "__exit_config__"
 EXIT_CONFIG_TITLE: str = "Exit Config Menu"
+BACK_CONFIG_CHOICE: str = "__back_config__"
+BACK_CONFIG_TITLE: str = "Back to Config Menu"
 START_INSTRUCTION: str = "[↑↓ + ENTER to select | Ctrl-C to abort]"
 SELECT_INSTRUCTION: str = " "
 INGREDIENT_INSTRUCTION: str = "\n[SPACE to include/exclude ingredients | ENTER to continue | Ctrl-C to abort]\n"
 CONFIG_LIST_INSTRUCTION: str = "\n[SPACE to show/hide lists | ENTER to save | Ctrl-C to abort]\n"
+COLOR_MENU_INSTRUCTION: str = "\n[ENTER to edit | ESC to return | Ctrl-C to quit]\n"
+COLOR_PICKER_CONTROLS: str = "[ENTER to save | ESC to return | Ctrl-C to quit]"
 TRUNCATED_SAMPLE_LENGTH: int = 11
 PROMPT_COLORS: dict[str, str] = {
 	"default": "",
@@ -58,6 +63,27 @@ PROMPT_COLORS: dict[str, str] = {
 	"cyan": "ansicyan",
 	"white": "ansiwhite",
 	"grey": "ansibrightblack",
+}
+CONFIG_COLOR_OPTIONS: tuple[str, ...] = (
+	"black",
+	"red",
+	"green",
+	"yellow",
+	"blue",
+	"magenta",
+	"cyan",
+	"white",
+	"grey",
+)
+CONFIG_COLOR_DEFAULTS: dict[str, str] = {
+	"standard_text_color": "white",
+	"quantity_color": "green",
+	"omitted_ingredient_color": "grey",
+}
+COLOR_SETTING_INSTRUCTIONS: dict[str, str] = {
+	"standard_text_color": "Used for regular terminal output text.",
+	"quantity_color": "Used for quantities and units in terminal ingredient lists.",
+	"omitted_ingredient_color": "Used for ingredients excluded from the final list.",
 }
 
 
@@ -320,6 +346,10 @@ def run_config_editor(config_path: Path, config: Config, prompt_style=None) -> i
 			print("Saved config.json")
 			continue
 
+		if action == "colors":
+			config = edit_color_settings(config_path, config, prompt_style=prompt_style)
+			continue
+
 		print()
 		print("Not implemented yet.")
 
@@ -356,6 +386,64 @@ def edit_reminders_list_visibility(config: Config, prompt_style=None) -> Config:
 			if target.identifier not in visible_ids
 		],
 	)
+
+
+def edit_color_settings(config_path: Path, config: Config, prompt_style=None) -> Config:
+	while True:
+		setting = questionary.select(
+			"",
+			choices=[
+				questionary.Choice(
+					title=f"Standard Text Color: {format_config_color_value(config, 'standard_text_color')}",
+					value="standard_text_color",
+				),
+				questionary.Choice(
+					title=f"Quantity Color: {format_config_color_value(config, 'quantity_color')}",
+					value="quantity_color",
+				),
+				questionary.Choice(
+					title=f"Omitted Ingredient Color: {format_config_color_value(config, 'omitted_ingredient_color')}",
+					value="omitted_ingredient_color",
+				),
+				back_config_choice(),
+			],
+			instruction=COLOR_MENU_INSTRUCTION,
+			pointer=">",
+			qmark="Colors",
+			style=prompt_style,
+		)
+		bind_escape_value(setting, BACK_CONFIG_CHOICE)
+		setting_name = require_config_selection(ask_or_abort(setting))
+		if setting_name == BACK_CONFIG_CHOICE:
+			return config
+
+		current_color: str = normalize_config_color(setting_name, getattr(config, setting_name))
+		choices: list[questionary.Choice] = [
+			color_choice(color, is_default=color == CONFIG_COLOR_DEFAULTS[setting_name])
+			for color in CONFIG_COLOR_OPTIONS
+		]
+		default_choice: questionary.Choice | None = next(
+			(choice for choice in choices if choice.value == current_color),
+			None,
+		)
+		color_selection = questionary.select(
+			"",
+			choices=choices,
+			default=default_choice,
+			instruction=format_color_setting_instruction(setting_name),
+			pointer=">",
+			qmark=format_config_setting_name(setting_name),
+			style=prompt_style,
+		)
+		bind_escape_value(color_selection, BACK_CONFIG_CHOICE)
+		selected_color = require_config_selection(ask_or_abort(color_selection))
+		if selected_color == BACK_CONFIG_CHOICE:
+			continue
+
+		config = replace(config, **{setting_name: selected_color})
+		save_config(config_path, config)
+		print()
+		print("Saved config.json")
 
 
 def prompt_for_batch_size(recipe: dict[str, Any], prompt_style=None) -> float:
@@ -532,6 +620,48 @@ def exit_config_choice():
 	return questionary.Choice(title=EXIT_CONFIG_TITLE, value=EXIT_CONFIG_CHOICE)
 
 
+def back_config_choice():
+	return questionary.Choice(title=BACK_CONFIG_TITLE, value=BACK_CONFIG_CHOICE)
+
+
+def color_choice(color_name: str, is_default: bool = False):
+	label: str = f"{color_name} (default)" if is_default else color_name
+	return questionary.Choice(title=[(f"class:color-{color_name}", label)], value=color_name)
+
+
+def normalize_config_color(setting_name: str, color_name: str) -> str:
+	if color_name == "default":
+		return CONFIG_COLOR_DEFAULTS[setting_name]
+
+	return color_name
+
+
+def format_config_color_value(config: Config, setting_name: str) -> str:
+	color_name: str = normalize_config_color(setting_name, getattr(config, setting_name))
+	default_color: str = CONFIG_COLOR_DEFAULTS[setting_name]
+	if color_name == default_color:
+		return f"{color_name} (default)"
+
+	return color_name
+
+
+def bind_escape_value(prompt, value) -> None:
+	if not hasattr(prompt, "application"):
+		return
+
+	@prompt.application.key_bindings.add(Keys.Escape, eager=True)
+	def _(event):
+		event.app.exit(result=value)
+
+
+def format_config_setting_name(setting_name: str) -> str:
+	return setting_name.replace("_", " ").title()
+
+
+def format_color_setting_instruction(setting_name: str) -> str:
+	return f"\n{COLOR_SETTING_INSTRUCTIONS[setting_name]}\n{COLOR_PICKER_CONTROLS}\n"
+
+
 def style_instruction(value: str) -> str:
 	return f"\033[90m{value}\033[0m"
 
@@ -565,6 +695,9 @@ def build_prompt_style(color_name: str):
 		"qmark": "bold",
 		"question": "bold",
 	}
+	for color_option, ansi_color in PROMPT_COLORS.items():
+		if ansi_color != "":
+			styles[f"color-{color_option}"] = f"{ansi_color} noinherit"
 	if color != "":
 		styles["pointer"] = f"{color} noinherit"
 		styles["highlighted"] = f"{color} noreverse noinherit"

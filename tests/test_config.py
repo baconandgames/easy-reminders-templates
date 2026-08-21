@@ -18,7 +18,7 @@ def test_load_config_uses_defaults_when_file_is_missing() -> None:
 	assert config.hidden_apple_reminders_list_ids == []
 	assert config.append_short_name is True
 	assert config.include_on_hand_default is False
-	assert config.standard_text_color == "default"
+	assert config.standard_text_color == "white"
 	assert config.quantity_color == "green"
 	assert config.omitted_ingredient_color == "grey"
 
