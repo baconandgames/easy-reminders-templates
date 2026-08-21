@@ -5,6 +5,13 @@ JSON recipe files.
 
 ## Usage
 
+Create a virtual environment and install dependencies:
+
+```sh
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt
+```
+
 Run with an optional recipe short name:
 
 ```sh
@@ -19,6 +26,9 @@ The CLI then prompts for:
 
 - batch size, defaulting to the recipe's `default_batch`
 - whether to include ingredients marked as usually on hand
+
+Interactive prompts can be cancelled with the `Abort` option, `Ctrl-C`, or `q`
+where text input is accepted.
 
 If on-hand ingredients are omitted, they still appear at the end of the terminal
 output with an `x` marker and the configured omitted-item color.

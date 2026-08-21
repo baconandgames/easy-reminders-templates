@@ -2,14 +2,37 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 from typing import Any
+
+try:
+	import questionary
+except ModuleNotFoundError:
+	project_dir: Path = Path(__file__).resolve().parent
+	project_venv: Path = project_dir / ".venv"
+	project_python: Path = project_venv / "bin" / "python"
+	if project_python.exists() and Path(sys.prefix).resolve() != project_venv.resolve():
+		os.execv(str(project_python), [str(project_python), *sys.argv])
+
+	raise SystemExit(
+		"Error: missing dependency questionary. Run: python3 -m venv .venv && .venv/bin/python -m pip install -r requirements.txt"
+	)
 
 from src.config import Config, ConfigLoadError, load_config
 from src.delivery import DeliveryError, DeliveryResult, DeliveryTargetOption, get_delivery_target
 from src.formatter import ColorScheme, build_shopping_list, format_number, render_shopping_list
 from src.recipes import RecipeLoadError, find_recipe_by_short_name, load_recipes
+
+
+ABORT_COMMANDS: set[str] = {"q", "quit", "cancel", "abort"}
+ABORT_CHOICE: str = "__abort__"
+PROMPT_INSTRUCTION: str = "Enter to select; choose Abort or press Ctrl-C to cancel."
+
+
+class ShopAbort(Exception):
+	pass
 
 
 def main() -> int:
@@ -34,23 +57,28 @@ def main() -> int:
 		print(f"Error: {error}", file=sys.stderr)
 		return 1
 
-	if args.short_name is None:
-		recipe = select_recipe(recipes)
-	else:
-		try:
-			match: tuple[str, dict[str, Any]] | None = find_recipe_by_short_name(recipes, args.short_name)
-		except RecipeLoadError as error:
-			print(f"Error: {error}", file=sys.stderr)
-			return 1
+	try:
+		if args.short_name is None:
+			recipe = select_recipe(recipes)
+		else:
+			try:
+				match: tuple[str, dict[str, Any]] | None = find_recipe_by_short_name(recipes, args.short_name)
+			except RecipeLoadError as error:
+				print(f"Error: {error}", file=sys.stderr)
+				return 1
 
-		if match is None:
-			print(f'Error: no recipe found with short name "{args.short_name}".', file=sys.stderr)
-			return 1
+			if match is None:
+				print(f'Error: no recipe found with short name "{args.short_name}".', file=sys.stderr)
+				return 1
 
-		_recipe_id, recipe = match
+			_recipe_id, recipe = match
 
-	batch_size: float = prompt_for_batch_size(recipe)
-	include_on_hand: bool = prompt_for_include_on_hand(config.include_on_hand_default)
+		batch_size: float = prompt_for_batch_size(recipe)
+		include_on_hand: bool = prompt_for_include_on_hand(config.include_on_hand_default)
+	except ShopAbort:
+		print("Aborted.")
+		return 130
+
 	shopping_list = build_shopping_list(
 		recipe,
 		batch_size,
@@ -69,6 +97,9 @@ def main() -> int:
 			config.target_app,
 			target_selector=select_delivery_target,
 		).create_list(shopping_list, config)
+	except ShopAbort:
+		print("Aborted.")
+		return 130
 	except DeliveryError as error:
 		print(f"Error: {error}", file=sys.stderr)
 		return 1
@@ -94,90 +125,68 @@ def render_delivery_result(result: DeliveryResult) -> str:
 
 def select_recipe(recipes: dict[str, dict[str, Any]]) -> dict[str, Any]:
 	recipe_options: list[dict[str, Any]] = list(recipes.values())
+	choices: list[questionary.Choice] = [
+		questionary.Choice(
+			title=f"{recipe.get('short_name', recipe['name'])}: {recipe['name']}",
+			value=recipe,
+		)
+		for recipe in recipe_options
+	]
+	choices.append(questionary.Choice(title="Abort", value=ABORT_CHOICE))
 
-	print("Available recipes:")
-	for index, recipe in enumerate(recipe_options, start=1):
-		short_name: str = recipe.get("short_name", recipe["name"])
-		print(f"{index}. {short_name}: {recipe['name']}")
-
-	while True:
-		selection: str = input("Select a recipe: ").strip()
-		if selection == "":
-			print("Enter a recipe number.")
-			continue
-
-		try:
-			selected_index: int = int(selection)
-		except ValueError:
-			print("Enter a recipe number.")
-			continue
-
-		if 1 <= selected_index <= len(recipe_options):
-			return recipe_options[selected_index - 1]
-
-		print(f"Enter a number from 1 to {len(recipe_options)}.")
+	selection = questionary.select(
+		"Select a recipe:",
+		choices=choices,
+		instruction=PROMPT_INSTRUCTION,
+	)
+	return require_selection(ask_or_abort(selection))
 
 
 def prompt_for_batch_size(recipe: dict[str, Any]) -> float:
 	default_batch: float = float(recipe["default_batch"])
 	default_display: str = format_number(default_batch)
+	prompt = questionary.text(
+		f"Batch size [{default_display}]:",
+		validate=validate_batch_size,
+		instruction="Press Enter for default; type q to abort.",
+	)
 
-	while True:
-		selection: str = input(f"Batch size [{default_display}]: ").strip()
-		if selection == "":
-			return default_batch
-
-		try:
-			batch_size: float = float(selection)
-		except ValueError:
-			print("Enter a positive number.")
-			continue
-
-		if batch_size > 0:
-			return batch_size
-
-		print("Enter a positive number.")
+	selection = require_selection(ask_or_abort(prompt)).strip()
+	if selection == "":
+		return default_batch
+	if selection.casefold() in ABORT_COMMANDS:
+		raise ShopAbort()
+	return float(selection)
 
 
 def prompt_for_include_on_hand(default: bool) -> bool:
-	prompt: str = "Include on-hand items? [Y/n]: " if default else "Include on-hand items? [y/N]: "
-
-	while True:
-		selection: str = input(prompt).strip().casefold()
-		if selection == "":
-			return default
-
-		if selection in {"y", "yes"}:
-			return True
-
-		if selection in {"n", "no"}:
-			return False
-
-		print("Enter y or n.")
+	choices: list[questionary.Choice] = [
+		questionary.Choice(title="Yes", value=True),
+		questionary.Choice(title="No", value=False),
+		questionary.Choice(title="Abort", value=ABORT_CHOICE),
+	]
+	selection = questionary.select(
+		"Include on-hand items?",
+		choices=choices,
+		default=choices[0] if default else choices[1],
+		instruction=PROMPT_INSTRUCTION,
+	)
+	return require_selection(ask_or_abort(selection))
 
 
 def select_delivery_target(target_name: str, options: list[DeliveryTargetOption]) -> DeliveryTargetOption:
 	print()
-	print(f'Multiple lists with the name "{target_name}" were found. Which list would you like to add to?')
-	for index, option in enumerate(options, start=1):
-		print(f"{index}. {format_delivery_target_option(option)}")
-
-	while True:
-		selection: str = input("Select a list: ").strip()
-		if selection == "":
-			print("Enter a list number.")
-			continue
-
-		try:
-			selected_index: int = int(selection)
-		except ValueError:
-			print("Enter a list number.")
-			continue
-
-		if 1 <= selected_index <= len(options):
-			return options[selected_index - 1]
-
-		print(f"Enter a number from 1 to {len(options)}.")
+	choices: list[questionary.Choice] = [
+		questionary.Choice(title=format_delivery_target_option(option), value=option)
+		for option in options
+	]
+	choices.append(questionary.Choice(title="Abort", value=ABORT_CHOICE))
+	selection = questionary.select(
+		f'Multiple lists with the name "{target_name}" were found. Which list would you like to add to?',
+		choices=choices,
+		instruction=PROMPT_INSTRUCTION,
+	)
+	return require_selection(ask_or_abort(selection))
 
 
 def format_delivery_target_option(option: DeliveryTargetOption) -> str:
@@ -186,6 +195,39 @@ def format_delivery_target_option(option: DeliveryTargetOption) -> str:
 
 	samples: str = ", ".join(option.sample_items)
 	return f"{option.name} (Includes: {samples})"
+
+
+def validate_batch_size(selection: str) -> bool | str:
+	selection = selection.strip()
+	if selection == "":
+		return True
+
+	if selection.casefold() in ABORT_COMMANDS:
+		return True
+
+	try:
+		batch_size: float = float(selection)
+	except ValueError:
+		return "Enter a positive number."
+
+	if batch_size <= 0:
+		return "Enter a positive number."
+
+	return True
+
+
+def require_selection(selection):
+	if selection is None or selection == ABORT_CHOICE:
+		raise ShopAbort()
+
+	return selection
+
+
+def ask_or_abort(prompt):
+	try:
+		return prompt.ask()
+	except (KeyboardInterrupt, EOFError) as error:
+		raise ShopAbort() from error
 
 
 if __name__ == "__main__":

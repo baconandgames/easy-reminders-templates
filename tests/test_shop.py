@@ -3,7 +3,6 @@ from __future__ import annotations
 import importlib.util
 from importlib.machinery import SourceFileLoader
 from pathlib import Path
-from unittest.mock import patch
 
 from src.delivery import DeliveryResult, DeliveryTargetOption
 
@@ -17,14 +16,47 @@ shop_script = importlib.util.module_from_spec(SHOP_SPEC)
 SHOP_SPEC.loader.exec_module(shop_script)
 
 
-def test_prompt_for_include_on_hand_uses_false_default() -> None:
-	with patch("builtins.input", return_value=""):
-		assert shop_script.prompt_for_include_on_hand(default=False) is False
+class FakePrompt:
+	def __init__(self, result) -> None:
+		self.result = result
+
+	def ask(self):
+		return self.result
 
 
-def test_prompt_for_include_on_hand_uses_true_default() -> None:
-	with patch("builtins.input", return_value=""):
-		assert shop_script.prompt_for_include_on_hand(default=True) is True
+def test_prompt_for_include_on_hand_uses_false_default(monkeypatch) -> None:
+	monkeypatch.setattr(shop_script.questionary, "select", lambda *args, **kwargs: FakePrompt(False))
+
+	assert shop_script.prompt_for_include_on_hand(default=False) is False
+
+
+def test_prompt_for_include_on_hand_uses_true_default(monkeypatch) -> None:
+	monkeypatch.setattr(shop_script.questionary, "select", lambda *args, **kwargs: FakePrompt(True))
+
+	assert shop_script.prompt_for_include_on_hand(default=True) is True
+
+
+def test_prompt_for_batch_size_returns_questionary_value(monkeypatch) -> None:
+	monkeypatch.setattr(shop_script.questionary, "text", lambda *args, **kwargs: FakePrompt("1.5"))
+
+	assert shop_script.prompt_for_batch_size({"default_batch": 3}) == 1.5
+
+
+def test_prompt_for_batch_size_uses_default_on_empty_selection(monkeypatch) -> None:
+	monkeypatch.setattr(shop_script.questionary, "text", lambda *args, **kwargs: FakePrompt(""))
+
+	assert shop_script.prompt_for_batch_size({"default_batch": 3}) == 3
+
+
+def test_prompt_for_batch_size_can_abort(monkeypatch) -> None:
+	monkeypatch.setattr(shop_script.questionary, "text", lambda *args, **kwargs: FakePrompt("q"))
+
+	try:
+		shop_script.prompt_for_batch_size({"default_batch": 3})
+	except shop_script.ShopAbort:
+		pass
+	else:
+		raise AssertionError("Expected ShopAbort")
 
 
 def test_render_delivery_result_shows_dry_run_summary() -> None:

@@ -27,11 +27,12 @@ Whenever possible, implement one small feature at a time.
 
 - Python 3
 - Standard `venv`
+- questionary for terminal prompts
 - Git
-- Apple Reminders (EventKit integration later)
+- Apple Reminders via EventKit
 - macOS only
 
-No external libraries should be added unless they clearly improve the project.
+External libraries should stay limited and must clearly improve the project.
 
 ---
 
