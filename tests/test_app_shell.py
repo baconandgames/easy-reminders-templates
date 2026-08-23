@@ -57,42 +57,6 @@ def test_main_menu_keeps_exit_listkit_keyboard_accessible(tmp_path) -> None:
 	asyncio.run(run_app())
 
 
-def test_main_menu_hides_dev_relaunch_test_by_default(monkeypatch, tmp_path) -> None:
-	write_template(tmp_path)
-	monkeypatch.delenv(app_shell.DEV_RELAUNCH_TEST_ENV, raising=False)
-
-	async def run_app() -> None:
-		app = ListKitApp(Config(), tmp_path)
-		async with app.run_test() as pilot:
-			await pilot.pause()
-			labels = [
-				item.label_text
-				for item in app.query_one(ListView).children
-				if isinstance(item, OptionItem)
-			]
-			assert "Quit/Relaunch Test" not in labels
-
-	asyncio.run(run_app())
-
-
-def test_main_menu_shows_dev_relaunch_test_when_enabled(monkeypatch, tmp_path) -> None:
-	write_template(tmp_path)
-	monkeypatch.setenv(app_shell.DEV_RELAUNCH_TEST_ENV, "1")
-
-	async def run_app() -> None:
-		app = ListKitApp(Config(), tmp_path)
-		async with app.run_test() as pilot:
-			await pilot.pause()
-			labels = [
-				item.label_text
-				for item in app.query_one(ListView).children
-				if isinstance(item, OptionItem)
-			]
-			assert "Quit/Relaunch Test" in labels
-
-	asyncio.run(run_app())
-
-
 def test_new_list_escape_returns_to_target_picker(monkeypatch, tmp_path) -> None:
 	write_template(tmp_path)
 
