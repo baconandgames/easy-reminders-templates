@@ -271,12 +271,12 @@ def main() -> int:
 		print(f"Error: {error}", file=sys.stderr)
 		return 1
 
-	start_config: bool = args.short_name == "config"
+	start_config: bool = args.short_name in {"config", "settings"}
 	if start_config:
 		args.short_name = None
 
 	try:
-		from recipe_shopper.app_shell import run_textual_listkit
+		from recipe_shopper.app_shell import RELAUNCH_RESULT_CODE, run_textual_listkit
 	except ModuleNotFoundError as error:
 		if error.name not in {"textual", "rich"}:
 			raise
@@ -286,6 +286,8 @@ def main() -> int:
 	while True:
 		result: int = run_textual_listkit(config, templates_path, args.short_name, config_path, start_config=start_config)
 		start_config = False
+		if result == RELAUNCH_RESULT_CODE:
+			os.execv(sys.executable, [sys.executable, "-m", "recipe_shopper.cli"])
 		if result == 20:
 			try:
 				created_template_path = create_template_from_reminders_list(
@@ -504,6 +506,7 @@ def render_help(config: Config) -> str:
 		style_text("Usage", colors.standard_text_color),
 		style_text("-----", colors.standard_text_color),
 		f"{style_text('listkit', config.quantity_color)} [template-short-name]",
+		f"{style_text('listkit', config.quantity_color)} settings",
 		f"{style_text('listkit', config.quantity_color)} config",
 		f"{style_text('listkit', config.quantity_color)} --version",
 		"",
@@ -512,11 +515,12 @@ def render_help(config: Config) -> str:
 		f"{style_text('listkit', config.quantity_color)}",
 		f"{style_text('listkit', config.quantity_color)} chili",
 		f"{style_text('listkit', config.quantity_color)} beach",
-		f"{style_text('listkit', config.quantity_color)} config",
+		f"{style_text('listkit', config.quantity_color)} settings",
 		f"{style_text('listkit', config.quantity_color)} --version",
 		"",
 		style_text("Commands", colors.standard_text_color),
 		style_text("--------", colors.standard_text_color),
+		render_help_row("settings", "Open settings", config.quantity_color),
 		render_help_row("config", "Open settings", config.quantity_color),
 		render_help_row("--version", "Show installed version", config.quantity_color),
 		"",

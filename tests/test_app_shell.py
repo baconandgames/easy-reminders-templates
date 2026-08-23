@@ -57,6 +57,34 @@ def test_main_menu_keeps_exit_listkit_keyboard_accessible(tmp_path) -> None:
 	asyncio.run(run_app())
 
 
+def test_main_menu_shows_launch_update_shortcut(monkeypatch, tmp_path) -> None:
+	write_template(tmp_path)
+	monkeypatch.setattr(
+		ListKitApp,
+		"get_update_status",
+		lambda self: app_shell.UpdateStatus(
+			current_version="0.4.7",
+			latest_release=app_shell.ReleaseInfo(version="0.4.8", name="v0.4.8", body="", url=""),
+		),
+	)
+
+	async def run_app() -> None:
+		app = ListKitApp(Config(), tmp_path, check_updates_on_launch=True)
+		async with app.run_test() as pilot:
+			for _ in range(20):
+				await pilot.pause()
+				labels = [
+					item.label_text
+					for item in app.query_one(ListView).children
+					if isinstance(item, OptionItem)
+				]
+				if any("Update Available" in label for label in labels):
+					break
+			assert "[bold #ff3b30]Update Available: v0.4.7 > v0.4.8[/]" in labels
+
+	asyncio.run(run_app())
+
+
 def test_new_list_escape_returns_to_target_picker(monkeypatch, tmp_path) -> None:
 	write_template(tmp_path)
 
@@ -858,4 +886,138 @@ def test_settings_context_shows_version_status() -> None:
 			current_version="0.2.0",
 			latest_release=app_shell.ReleaseInfo(version="0.3.0", name="v0.3.0", body="", url=""),
 		)
-	) == "Choose what you want to configure. v0.3.0 is available."
+	) == "Choose what you want to configure.\nUpdate available: v0.2.0 > v0.3.0."
+
+
+def test_update_screen_includes_release_link(monkeypatch, tmp_path) -> None:
+	write_template(tmp_path)
+	monkeypatch.setattr(
+		ListKitApp,
+		"get_update_status",
+		lambda self: app_shell.UpdateStatus(
+			current_version="0.2.0",
+			latest_release=app_shell.ReleaseInfo(
+				version="0.3.0",
+				name="v0.3.0",
+				body="Release notes",
+				url="https://github.com/example/release",
+			),
+		),
+	)
+
+	async def run_app() -> None:
+		app = ListKitApp(Config(), tmp_path, start_config=True)
+		async with app.run_test() as pilot:
+			await pilot.pause()
+			app.show_update_screen()
+			await pilot.pause()
+			labels = [
+				item.label_text
+				for item in app.query_one(ListView).children
+				if isinstance(item, OptionItem)
+			]
+			assert labels == [
+				"Update to v0.3.0",
+				"View Release on GitHub",
+				"Skip v0.3.0",
+				"↩ Back",
+			]
+
+	asyncio.run(run_app())
+
+
+def test_run_update_shows_success_restart_screen(monkeypatch, tmp_path) -> None:
+	write_template(tmp_path)
+	monkeypatch.setattr(
+		app_shell,
+		"run_package_update",
+		lambda version: app_shell.UpdateResult(
+			success=True,
+			command=("pipx", "install", "--force", f"git+repo@v{version}"),
+			output="ok",
+		),
+	)
+
+	async def run_app() -> None:
+		app = ListKitApp(Config(), tmp_path)
+		async with app.run_test() as pilot:
+			await pilot.pause()
+			app.update_release = app_shell.ReleaseInfo(
+				version="0.3.0",
+				name="v0.3.0",
+				body="",
+				url="https://github.com/example/release",
+			)
+			app.run_update()
+			for _ in range(20):
+				await pilot.pause()
+				if app.view_name == "config_update_success":
+					break
+			assert app.view_name == "config_update_success"
+			labels = [
+				item.label_text
+				for item in app.query_one(ListView).children
+				if isinstance(item, OptionItem)
+			]
+			assert labels == ["Quit and Relaunch"]
+
+	asyncio.run(run_app())
+
+
+def test_relaunch_exits_with_relaunch_result_code(monkeypatch, tmp_path) -> None:
+	app = ListKitApp(Config(), tmp_path)
+	exit_codes: list[int] = []
+	monkeypatch.setattr(app, "exit", lambda code=0: exit_codes.append(code))
+
+	app.relaunch()
+
+	assert exit_codes == [app_shell.RELAUNCH_RESULT_CODE]
+
+
+def test_view_release_opens_default_browser(monkeypatch, tmp_path) -> None:
+	write_template(tmp_path)
+	opened_urls: list[str] = []
+	monkeypatch.setattr(app_shell.webbrowser, "open", lambda url: opened_urls.append(url))
+
+	async def run_app() -> None:
+		app = ListKitApp(Config(), tmp_path)
+		async with app.run_test() as pilot:
+			await pilot.pause()
+			app.update_release = app_shell.ReleaseInfo(
+				version="0.3.0",
+				name="v0.3.0",
+				body="",
+				url="https://github.com/example/release",
+			)
+			app.view_release_on_github()
+			await pilot.pause()
+
+	asyncio.run(run_app())
+
+	assert opened_urls == ["https://github.com/example/release"]
+
+
+def test_copy_error_and_open_issue(monkeypatch, tmp_path) -> None:
+	write_template(tmp_path)
+	copied_text: list[str] = []
+	opened_urls: list[str] = []
+	monkeypatch.setattr(app_shell, "copy_text_to_clipboard", lambda text: copied_text.append(text) or True)
+	monkeypatch.setattr(app_shell.webbrowser, "open", lambda url: opened_urls.append(url))
+
+	async def run_app() -> None:
+		app = ListKitApp(Config(), tmp_path)
+		async with app.run_test() as pilot:
+			await pilot.pause()
+			app.update_result = app_shell.UpdateResult(
+				success=False,
+				command=("pipx", "upgrade", "easy-reminder-templates"),
+				output="failed output",
+				error="Command exited with 1.",
+			)
+			app.copy_update_error(open_issue=True)
+			await pilot.pause()
+
+	asyncio.run(run_app())
+
+	assert "failed output" in copied_text[0]
+	assert opened_urls == [app_shell.GITHUB_ISSUES_URL]

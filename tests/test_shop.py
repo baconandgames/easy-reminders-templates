@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import recipe_shopper.cli as shop_script
+import recipe_shopper.app_shell as app_shell
 from recipe_shopper.config import Config, load_config
 from recipe_shopper.delivery import DeliveryResult, DeliveryTargetOption
 from recipe_shopper.formatter import build_shopping_list
@@ -12,6 +13,52 @@ class FakePrompt:
 
 	def ask(self):
 		return self.result
+
+
+def test_main_execs_when_textual_requests_relaunch(monkeypatch, tmp_path) -> None:
+	exec_args: list[tuple[str, list[str]]] = []
+
+	def fake_execv(executable: str, args: list[str]) -> None:
+		exec_args.append((executable, args))
+		raise SystemExit(0)
+
+	monkeypatch.setattr(shop_script.sys, "argv", ["listkit"])
+	monkeypatch.setattr(shop_script, "get_project_root", lambda: tmp_path)
+	monkeypatch.setattr(shop_script, "resolve_config_path", lambda _project_dir: tmp_path / "config.json")
+	monkeypatch.setattr(shop_script, "resolve_templates_path", lambda _project_dir: tmp_path / "templates")
+	monkeypatch.setattr(shop_script, "load_config", lambda _config_path: Config())
+	monkeypatch.setattr(app_shell, "run_textual_listkit", lambda *_args, **_kwargs: app_shell.RELAUNCH_RESULT_CODE)
+	monkeypatch.setattr(shop_script.os, "execv", fake_execv)
+
+	try:
+		shop_script.main()
+	except SystemExit:
+		pass
+
+	assert exec_args == [
+		(
+			shop_script.sys.executable,
+			[shop_script.sys.executable, "-m", "recipe_shopper.cli"],
+		)
+	]
+
+
+def test_main_treats_settings_like_config(monkeypatch, tmp_path) -> None:
+	captured_start_config: list[bool] = []
+
+	def fake_run_textual_listkit(_config, _templates_path, _short_name, _config_path, start_config):
+		captured_start_config.append(start_config)
+		return 0
+
+	monkeypatch.setattr(shop_script.sys, "argv", ["listkit", "settings"])
+	monkeypatch.setattr(shop_script, "get_project_root", lambda: tmp_path)
+	monkeypatch.setattr(shop_script, "resolve_config_path", lambda _project_dir: tmp_path / "config.json")
+	monkeypatch.setattr(shop_script, "resolve_templates_path", lambda _project_dir: tmp_path / "templates")
+	monkeypatch.setattr(shop_script, "load_config", lambda _config_path: Config())
+	monkeypatch.setattr(app_shell, "run_textual_listkit", fake_run_textual_listkit)
+
+	assert shop_script.main() == 0
+	assert captured_start_config == [True]
 
 
 def test_resolve_config_path_prefers_project_config(tmp_path) -> None:
@@ -81,7 +128,9 @@ def test_render_help_uses_app_color_scheme() -> None:
 
 	assert "\033[31mEasy Reminder Templates\033[0m" in help_text
 	assert "\033[36mlistkit\033[0m chili" in help_text
+	assert "\033[36mlistkit\033[0m settings" in help_text
 	assert "\033[36mlistkit\033[0m --version" in help_text
+	assert "\033[36msettings\033[0m                Open settings" in help_text
 	assert "\033[36mtemplate-short-name\033[0m     Optional shortcut for a template" in help_text
 
 

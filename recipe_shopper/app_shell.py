@@ -11,7 +11,8 @@ from typing import Any
 from rich.markup import escape
 from textual.app import App, ComposeResult
 from textual.containers import Container, Vertical
-from textual.widgets import Input, Label, ListItem, ListView, Static
+from textual.worker import Worker, WorkerState
+from textual.widgets import Input, Label, ListItem, ListView, ProgressBar, Static
 
 from recipe_shopper.colors import HEX_COLOR_PATTERN, normalize_color
 from recipe_shopper.config import Config, save_config
@@ -33,12 +34,14 @@ from recipe_shopper.templates import (
 	template_uses_batch_size,
 )
 from recipe_shopper.updates import (
-	UPDATE_COMMAND,
+	GITHUB_ISSUES_URL,
 	ReleaseInfo,
 	UpdateCheckError,
+	UpdateResult,
 	fetch_latest_release,
 	get_current_version,
 	is_newer_version,
+	run_package_update,
 )
 
 
@@ -70,6 +73,7 @@ CONFIG_COLOR_DEFAULTS: dict[str, str] = {
 	"selection_color": Config.selection_color,
 	"omitted_ingredient_color": Config.omitted_ingredient_color,
 }
+RELAUNCH_RESULT_CODE: int = 30
 COLOR_SETTING_LABELS: dict[str, str] = {
 	"standard_text_color": "Standard Text Color",
 	"quantity_color": "Quantity Color",
@@ -272,6 +276,7 @@ class ListKitApp(App[int]):
 		short_name: str | None = None,
 		config_path: Path | None = None,
 		start_config: bool = False,
+		check_updates_on_launch: bool = False,
 	) -> None:
 		super().__init__()
 		self.config = config
@@ -279,6 +284,7 @@ class ListKitApp(App[int]):
 		self.templates_path = templates_path
 		self.short_name = short_name
 		self.start_config = start_config
+		self.check_updates_on_launch = check_updates_on_launch
 		self.templates: TemplateMap = {}
 		self.template: dict[str, Any] | None = None
 		self.template_id: str = ""
@@ -296,6 +302,10 @@ class ListKitApp(App[int]):
 		self.config_color_setting: str = ""
 		self.update_status: UpdateStatus | None = None
 		self.update_check_requested: bool = False
+		self.update_release: ReleaseInfo | None = None
+		self.update_result: UpdateResult | None = None
+		self.update_worker: Worker | None = None
+		self.launch_update_worker: Worker | None = None
 		self.template_source_target: DeliveryTargetOption | None = None
 		self.template_item_names: list[str] = []
 		self.template_name: str = ""
@@ -328,26 +338,44 @@ class ListKitApp(App[int]):
 			return
 
 		self.show_main_menu()
+		if self.check_updates_on_launch:
+			self.call_after_refresh(self.schedule_launch_update_check)
 
 	def show_main_menu(self) -> None:
 		self.view_name = "main"
 		self.set_header(
-			f"{LISTKIT_BANNER}Reusable templates for Apple Reminders.\n[#777777]Version {get_current_version()}[/]",
+			f"{LISTKIT_BANNER}Easy template manager for Apple Reminders.\n[#777777]Version {get_current_version()}[/]",
 			MAIN_MENU_INSTRUCTIONS,
 			markup=True,
 		)
 		self.set_footer("[↑↓ select | ENTER confirm | ESC exit | Ctrl-C quit]")
+		options = [
+			("Add from Template", "create_list"),
+			("Create Template from List", "create_template"),
+			("Settings", "config"),
+			("Help", "help"),
+		]
+		if self.update_status is not None and self.update_status.latest_release is not None:
+			options.insert(0, (format_launch_update_label(self.update_status), "config:updates"))
 		menu = self.build_list(
-			[
-				("Add from Template", "create_list"),
-				("Create Template from List", "create_template"),
-				("Settings", "config"),
-				("Help", "help"),
-				("⏻ Quit", "exit"),
-			]
+			[*options, ("⏻ Quit", "exit")],
+			markup=True,
 		)
 		self.replace_body(Static("", classes="menu-spacer"), menu)
 		menu.focus()
+
+	def start_launch_update_check(self) -> None:
+		if self.update_status is not None or self.launch_update_worker is not None:
+			return
+		self.launch_update_worker = self.run_worker(
+			self.get_update_status,
+			name="launch-update-check",
+			thread=True,
+			exclusive=True,
+		)
+
+	def schedule_launch_update_check(self) -> None:
+		self.set_timer(0.2, self.start_launch_update_check)
 
 	def show_template_menu(self, warning: str = "") -> None:
 		self.view_name = "template"
@@ -1096,12 +1124,18 @@ class ListKitApp(App[int]):
 			return
 		release = status.latest_release or status.skipped_release
 		assert release is not None
-		self.set_header("Update Available", f"Current: {status.current_version}  Latest: {release.version}")
+		self.update_release = release
+		self.set_header(
+			"[bold #ff3b30]Update Available[/]",
+			f"Review this release, then update, view it on GitHub, skip it, or go back.\nUpdate available: v{status.current_version} > v{release.version}",
+			markup=True,
+		)
 		self.set_footer("[↑↓ select | ENTER confirm | ESC back | Ctrl-C quit]")
 		body = render_update_summary(release)
 		menu = self.build_list(
 			[
-				(f"Update to v{release.version}", "config:update_command"),
+				(f"Update to v{release.version}", "config:run_update"),
+				("View Release on GitHub", "config:view_release"),
 				(f"Skip v{release.version}", f"config:skip_update:{release.version}"),
 				("↩ Back", "config:updates_back"),
 			]
@@ -1121,11 +1155,102 @@ class ListKitApp(App[int]):
 			return UpdateStatus(current_version=current_version, skipped_release=latest_release)
 		return UpdateStatus(current_version=current_version, latest_release=latest_release)
 
-	def show_update_command(self) -> None:
-		self.view_name = "config_update_command"
-		self.set_header("Update Command", "Run this command in Terminal.")
-		self.set_footer("[ENTER exit | ESC back | Ctrl-C quit]")
-		self.replace_body(Static(UPDATE_COMMAND))
+	def run_update(self) -> None:
+		release = self.update_release
+		if release is None:
+			self.show_update_screen()
+			return
+
+		self.view_name = "config_update_running"
+		self.set_header("Updating ListKit", f"Installing v{release.version}. This may take a moment.")
+		self.set_footer("[Ctrl-C quit]")
+		self.replace_body(
+			Static("Running update..."),
+			ProgressBar(total=None, show_percentage=False, show_eta=False, id="update-progress"),
+		)
+		self.update_worker = self.run_worker(
+			lambda: run_package_update(release.version),
+			name="package-update",
+			thread=True,
+			exclusive=True,
+		)
+
+	def on_worker_state_changed(self, event: Worker.StateChanged) -> None:
+		if event.worker is self.launch_update_worker:
+			if event.state == WorkerState.SUCCESS and isinstance(event.worker.result, UpdateStatus):
+				self.update_status = event.worker.result
+				if self.view_name == "main" and self.update_status.latest_release is not None:
+					self.show_main_menu()
+			if event.state in {WorkerState.SUCCESS, WorkerState.ERROR, WorkerState.CANCELLED}:
+				self.launch_update_worker = None
+			return
+		if event.worker is not self.update_worker:
+			return
+		release = self.update_release
+		if event.state == WorkerState.ERROR:
+			result = UpdateResult(success=False, command=(), output="", error="Update worker failed unexpectedly.")
+			self.update_result = result
+			if release is not None:
+				self.show_update_failure(release, result)
+			return
+		if event.state != WorkerState.SUCCESS:
+			return
+		result = event.worker.result
+		if release is None or not isinstance(result, UpdateResult):
+			self.show_update_screen()
+			return
+		self.update_result = result
+		if result.success:
+			self.show_update_success(release)
+		else:
+			self.show_update_failure(release, result)
+
+	def show_update_success(self, release: ReleaseInfo) -> None:
+		self.view_name = "config_update_success"
+		self.set_header("Update Complete", f"Successfully updated to v{release.version}. Restart required.")
+		self.set_footer("[ENTER quit and relaunch | Ctrl-C quit]")
+		body = "ListKit needs to restart before the new version is active."
+		menu = self.build_list([("Quit and Relaunch", "config:relaunch")])
+		self.replace_body(Static(body), menu)
+		menu.focus()
+
+	def show_update_failure(self, release: ReleaseInfo, result: UpdateResult) -> None:
+		self.view_name = "config_update_failure"
+		self.set_header("Update Failed", f"v{release.version} could not be installed.")
+		self.set_footer("[↑↓ select | ENTER confirm | ESC back | Ctrl-C quit]")
+		body = render_update_failure(result)
+		menu = self.build_list(
+			[
+				("Copy Error and Open GitHub Issue", "config:copy_error_issue"),
+				("Copy Error", "config:copy_error"),
+				("View Release on GitHub", "config:view_release"),
+				("↩ Back", "config:updates_back"),
+			]
+		)
+		self.replace_body(Static(body), menu)
+		menu.focus()
+
+	def view_release_on_github(self) -> None:
+		if self.update_release is None or self.update_release.url == "":
+			self.query_one("#context", Static).update("Release URL is unavailable.")
+			return
+		webbrowser.open(self.update_release.url)
+		self.query_one("#context", Static).update("Opened release in your default browser.")
+
+	def copy_update_error(self, open_issue: bool = False) -> None:
+		if self.update_result is None:
+			self.query_one("#context", Static).update("No update error is available.")
+			return
+		copied = copy_text_to_clipboard(render_update_failure(self.update_result))
+		if open_issue:
+			webbrowser.open(GITHUB_ISSUES_URL)
+			message = "Copied update error and opened GitHub Issues." if copied else "Opened GitHub Issues. Could not copy update error."
+		else:
+			message = "Copied update error." if copied else "Could not copy update error."
+		self.query_one("#context", Static).update(message)
+
+	def relaunch(self) -> None:
+		self.exit(RELAUNCH_RESULT_CODE)
 
 	def skip_update(self, version: str) -> None:
 		self.config = replace(self.config, skipped_update_version=version)
@@ -1190,8 +1315,16 @@ class ListKitApp(App[int]):
 			self.show_config_color_picker(value.rsplit(":", 1)[1])
 		elif value.startswith("config:set_color:"):
 			self.save_config_color(value.rsplit(":", 1)[1])
-		elif value == "config:update_command":
-			self.show_update_command()
+		elif value == "config:run_update":
+			self.run_update()
+		elif value == "config:view_release":
+			self.view_release_on_github()
+		elif value == "config:copy_error":
+			self.copy_update_error()
+		elif value == "config:copy_error_issue":
+			self.copy_update_error(open_issue=True)
+		elif value == "config:relaunch":
+			self.relaunch()
 		elif value.startswith("config:skip_update:"):
 			self.skip_update(value.rsplit(":", 1)[1])
 		elif value == "config:updates_back":
@@ -1445,11 +1578,10 @@ class ListKitApp(App[int]):
 			self.show_main_menu()
 		elif self.view_name == "error":
 			self.exit(self.result_code)
-		elif self.view_name in {"config_updates", "config_update_command"}:
-			if self.view_name == "config_update_command":
-				self.exit(0)
-			else:
-				self.show_config_menu()
+		elif self.view_name == "config_update_success":
+			self.relaunch()
+		elif self.view_name == "config_updates":
+			self.show_config_menu()
 
 	def action_back(self) -> None:
 		if self.view_name == "main":
@@ -1459,7 +1591,15 @@ class ListKitApp(App[int]):
 				self.exit(0)
 			else:
 				self.show_main_menu()
-		elif self.view_name in {"config_lists", "config_sort_order", "config_usage_history", "config_colors", "config_defaults", "config_updates"}:
+		elif self.view_name in {
+			"config_lists",
+			"config_sort_order",
+			"config_usage_history",
+			"config_colors",
+			"config_defaults",
+			"config_updates",
+			"config_update_failure",
+		}:
 			self.show_config_menu()
 		elif self.view_name.startswith("config_sort:"):
 			self.show_config_sort_order_menu()
@@ -1475,8 +1615,6 @@ class ListKitApp(App[int]):
 			self.show_config_defaults_menu()
 		elif self.view_name == "config_color_picker":
 			self.show_config_colors_menu()
-		elif self.view_name == "config_update_command":
-			self.show_update_screen()
 		elif self.view_name == "template":
 			self.show_main_menu()
 		elif self.view_name == "template_source":
@@ -1526,9 +1664,10 @@ def run_textual_listkit(
 		short_name=short_name,
 		config_path=config_path,
 		start_config=start_config,
+		check_updates_on_launch=True,
 	)
 	result = app.run()
-	if result in {10, 20}:
+	if result in {10, 20, RELAUNCH_RESULT_CODE}:
 		return int(result)
 	return app.result_code
 
@@ -1684,9 +1823,9 @@ def render_created_items_summary(created_items: list[str]) -> str:
 
 def format_settings_context(status: UpdateStatus) -> str:
 	if status.latest_release is not None:
-		return f"Choose what you want to configure. v{status.latest_release.version} is available."
+		return f"Choose what you want to configure.\nUpdate available: v{status.current_version} > v{status.latest_release.version}."
 	if status.skipped_release is not None:
-		return f"Choose what you want to configure. v{status.skipped_release.version} is available but skipped."
+		return f"Choose what you want to configure.\nUpdate available but skipped: v{status.current_version} > v{status.skipped_release.version}."
 	if status.error != "":
 		return f"Choose what you want to configure. Current version: v{status.current_version}."
 	return f"Choose what you want to configure. v{status.current_version} is up to date."
@@ -1702,6 +1841,12 @@ def format_update_menu_label(status: UpdateStatus, check_requested: bool = False
 	if check_requested:
 		return "Check for Updates: up to date"
 	return "Check for Updates"
+
+
+def format_launch_update_label(status: UpdateStatus) -> str:
+	if status.latest_release is None:
+		return "Update Available"
+	return f"[bold #ff3b30]Update Available: v{status.current_version} > v{status.latest_release.version}[/]"
 
 
 def is_empty_templates_error(error: TemplateLoadError) -> bool:
@@ -1812,3 +1957,22 @@ def render_update_summary(release: ReleaseInfo) -> str:
 		"",
 	]
 	return "\n".join(lines)
+
+
+def render_update_failure(result: UpdateResult) -> str:
+	lines = ["Update failed."]
+	if result.command:
+		lines.extend(["", "Command", "-" * 36, " ".join(result.command)])
+	if result.error != "":
+		lines.extend(["", "Error", "-" * 36, result.error])
+	if result.output != "":
+		lines.extend(["", "Output", "-" * 36, result.output])
+	return "\n".join(lines)
+
+
+def copy_text_to_clipboard(text: str) -> bool:
+	try:
+		subprocess.run(["pbcopy"], input=text, text=True, check=True)
+	except (OSError, subprocess.CalledProcessError):
+		return False
+	return True

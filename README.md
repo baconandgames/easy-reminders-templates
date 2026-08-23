@@ -1,4 +1,4 @@
-# Easy Reminder Templates
+# Easy Reminders Templates
 
 > Alpha software: this project is actively changing and should be used at your
 > own risk while it is in development. It can create real Apple Reminders items,
@@ -70,22 +70,23 @@ listkit --version
 You can also check for updates from Settings:
 
 ```sh
-listkit config
+listkit settings
 ```
 
 The update checker uses GitHub Releases. If a newer release exists, `listkit`
-shows its changelog before offering the manual update command. You can also skip
-that release; a later release will appear again.
+shows its changelog and can install the update from inside Settings. After a
+successful update, ListKit prompts you to quit and relaunch so the new version is
+active. You can also skip that release; a later release will appear again.
 
 For maintainers: the GitHub Release tag and the package version in
-`pyproject.toml` must match for `pipx upgrade` to install the expected version.
+`pyproject.toml` must match so the in-app updater installs the expected version.
 
 ## First Run
 
 Open Settings first:
 
 ```sh
-listkit config
+listkit settings
 ```
 
 Then create a list from a template:
@@ -225,7 +226,7 @@ Reminders list before adding the selected template items.
 When `apple_reminders_list_id` is set, it is preferred over
 `apple_reminders_list_name`.
 
-Run `listkit config` to open Settings. From there, choose which Apple Reminders
-lists appear as destinations, edit terminal colors, update common defaults, and
-check for GitHub release updates. Hidden lists are stored in
-`hidden_apple_reminders_list_ids`.
+Run `listkit settings` to open Settings; `listkit config` is also supported.
+From there, choose which Apple Reminders lists appear as destinations, edit
+terminal colors, update common defaults, and check for GitHub release updates.
+Hidden lists are stored in `hidden_apple_reminders_list_ids`.
