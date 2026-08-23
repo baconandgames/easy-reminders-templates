@@ -339,7 +339,7 @@ class ListKitApp(App[int]):
 
 		self.show_main_menu()
 		if self.check_updates_on_launch:
-			self.start_launch_update_check()
+			self.call_after_refresh(self.schedule_launch_update_check)
 
 	def show_main_menu(self) -> None:
 		self.view_name = "main"
@@ -373,6 +373,9 @@ class ListKitApp(App[int]):
 			thread=True,
 			exclusive=True,
 		)
+
+	def schedule_launch_update_check(self) -> None:
+		self.set_timer(0.2, self.start_launch_update_check)
 
 	def show_template_menu(self, warning: str = "") -> None:
 		self.view_name = "template"
