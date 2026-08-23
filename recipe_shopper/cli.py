@@ -271,23 +271,40 @@ def main() -> int:
 		print(f"Error: {error}", file=sys.stderr)
 		return 1
 
-	if args.short_name == "config":
-		try:
-			config_result: str = run_config_editor(config_path, config, prompt_style=build_prompt_style(config.selection_color))
-			if config_result == RETURN_TO_LISTKIT_CHOICE:
-				config = load_config(config_path)
-				return run_listkit_flow(None, config, templates_path)
-			return 0
-		except ConfigExit:
-			return 0
-		except ShopAbort:
-			print("Aborted.")
-			return 130
-		except DeliveryError as error:
-			print(f"Error: {error}", file=sys.stderr)
-			return 1
+	start_config: bool = args.short_name == "config"
+	if start_config:
+		args.short_name = None
 
-	return run_listkit_flow(args.short_name, config, templates_path)
+	try:
+		from recipe_shopper.app_shell import run_textual_listkit
+	except ModuleNotFoundError as error:
+		if error.name not in {"textual", "rich"}:
+			raise
+		print("Error: missing Textual dependencies. Run: pipx reinstall easy-reminder-templates", file=sys.stderr)
+		return 1
+
+	while True:
+		result: int = run_textual_listkit(config, templates_path, args.short_name, config_path, start_config=start_config)
+		start_config = False
+		if result == 20:
+			try:
+				created_template_path = create_template_from_reminders_list(
+					templates_path,
+					config,
+					prompt_style=build_prompt_style(config.selection_color),
+				)
+				if created_template_path is not None:
+					print()
+					print(render_created_template_result(created_template_path))
+				args.short_name = None
+				continue
+			except ShopAbort:
+				print("Aborted.")
+				return 130
+			except DeliveryError as error:
+				print(f"Error: {error}", file=sys.stderr)
+				return 1
+		return result
 
 
 def run_listkit_flow(short_name: str | None, config: Config, templates_path: Path) -> int:

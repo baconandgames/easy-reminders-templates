@@ -124,3 +124,25 @@ def test_blank_default_batch_and_quantities_do_not_use_batch_size(tmp_path) -> N
 	templates = load_templates(templates_dir)
 
 	assert template_uses_batch_size(templates["packing"]) is False
+
+
+def test_load_templates_allows_blank_item_name_placeholder(tmp_path) -> None:
+	templates_dir: Path = tmp_path / "templates"
+	templates_dir.mkdir()
+	(templates_dir / "empty-list.json").write_text(
+		"""
+{
+  "schema_version": 1,
+  "type": "list",
+  "name": "Empty List",
+  "items": [
+    {"name": "", "quantity": "", "unit": ""}
+  ]
+}
+""",
+		encoding="utf-8",
+	)
+
+	templates = load_templates(templates_dir)
+
+	assert templates["empty-list"]["ingredients"][0]["name"] == ""

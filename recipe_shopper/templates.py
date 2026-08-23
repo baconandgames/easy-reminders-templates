@@ -169,8 +169,8 @@ def _validate_item(template_id: str, index: int, item: Any) -> None:
 	if not isinstance(item, dict):
 		raise TemplateLoadError(f"{label} must be an object.")
 
-	if not isinstance(item.get("name"), str) or item["name"] == "":
-		raise TemplateLoadError(f"{label} must have a non-empty string name.")
+	if not isinstance(item.get("name"), str):
+		raise TemplateLoadError(f"{label} must have a string name.")
 
 	quantity: Any = item.get("quantity")
 	if quantity is not None and not isinstance(quantity, int | float):
