@@ -67,7 +67,7 @@ pipx upgrade easy-reminder-templates
 listkit --version
 ```
 
-You can also check for updates from the config menu:
+You can also check for updates from Settings:
 
 ```sh
 listkit config
@@ -82,7 +82,7 @@ For maintainers: the GitHub Release tag and the package version in
 
 ## First Run
 
-Open the config menu first:
+Open Settings first:
 
 ```sh
 listkit config
@@ -115,8 +115,14 @@ listkit
 listkit chili
 ```
 
-When no short name is provided, `listkit` lists available templates and prompts for
-a selection.
+When no short name is provided, `listkit` opens the main menu. Choose **Add from
+Template** to select a saved template, **Create Template from List** to turn an
+existing Reminders list into a template, or **Settings** to adjust defaults,
+colors, visible Reminders lists, and updates.
+
+You can also jump directly into a template with its short name, such as
+`listkit chili`. If the short name is not found, `listkit` falls back to the
+template picker so you can choose a template or return to the main menu.
 
 When installed outside this repository, `listkit` creates user files in:
 
@@ -131,12 +137,14 @@ The CLI then prompts for:
 - batch size, when the template includes quantities
 - whether to include items marked as usually on hand, when relevant
 
-Interactive prompts can be exited with `Esc`. Pressing `Esc` backs out of
-submenus and exits when you reach the top level.
+Interactive screens can be exited with `Esc`. Pressing `Esc` backs out of
+submenus and exits when you reach the top level. Most picker screens also show a
+visible **↩ Back** row.
 
 Before sending anything to Apple Reminders, `listkit` shows all template items in a
 checkbox list. Items are preselected based on the on-hand prompt, and can be
-added or removed before the final list is created.
+added or removed before the selected items are sent to Reminders. The final
+screen summarizes what was added.
 
 ## Templates
 
@@ -154,6 +162,10 @@ templates/
 See [TEMPLATES.md](TEMPLATES.md) for the full JSON template guide, including
 examples, field descriptions, blank-value behavior, and how to create a template
 from an existing Apple Reminders list.
+
+From **Help**, choose **Open Templates Folder** to open the template folder in
+Finder. Templates are plain JSON files, so unwanted templates can be removed by
+deleting their files.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the current alpha contribution
 policy.
@@ -213,6 +225,7 @@ Reminders list before adding the selected template items.
 When `apple_reminders_list_id` is set, it is preferred over
 `apple_reminders_list_name`.
 
-Run `listkit config` to choose which Apple Reminders lists appear in the list
-picker, edit terminal colors, update common options, and check for GitHub release
-updates. Hidden lists are stored in `hidden_apple_reminders_list_ids`.
+Run `listkit config` to open Settings. From there, choose which Apple Reminders
+lists appear as destinations, edit terminal colors, update common defaults, and
+check for GitHub release updates. Hidden lists are stored in
+`hidden_apple_reminders_list_ids`.

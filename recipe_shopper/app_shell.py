@@ -657,7 +657,7 @@ class ListKitApp(App[int]):
 		self.replace_body(
 			Static(
 				"[bold]Short Names[/]\n"
-				"Run listkit &lt;short-name&gt; to jump straight into a template. Short names are set in each template JSON file.\n\n"
+				"Run listkit <short-name> to jump straight into a template. Short names are set in each template JSON file.\n\n"
 				"[bold]Template Files[/]\n"
 				"Templates are stored as JSON. You can edit quantities, units, default batch size, on-hand items, and short names directly. To remove unwanted templates, delete them from the templates folder.\n\n"
 				"[bold]Documentation[/]\n"

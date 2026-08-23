@@ -133,20 +133,24 @@ planning notes do not read like unfinished work.
 - Installable `listkit` command through `pipx`.
 - GitHub install and upgrade path tested on a clean Mac.
 - Apple Reminders integration through EventKit.
-- Config menu for visible Reminders lists, colors, defaults, and updates.
+- Textual app shell with main menu, screen headers, footer controls, and
+  app-style navigation.
+- Settings menu for visible Reminders lists, colors, defaults, and updates.
 - GitHub Releases update checker with changelog display, skip-current-version,
   and copied manual update command.
 - One JSON file per template.
 - Recipe templates with quantities, units, batch scaling, and on-hand items.
 - Basic list templates without quantities or units.
 - Create-template-from-existing-Reminders-list flow.
+- Empty Reminders lists can create shell template JSON files with a blank item
+  placeholder.
 - Empty/no-visible-Reminders-list flow that prompts for a new list instead of
   showing an empty picker.
 - Bundled examples for recipes, packing/travel, and recurring store purchases.
 
 ### Update Checking
 
-Update awareness belongs in `listkit config`, not in the normal `listkit` flow.
+Update awareness belongs in Settings, not in the normal add-items flow.
 The implemented baseline checks GitHub Releases, shows release notes, prints the
 manual update command, and allows a user to skip the current release.
 
@@ -157,9 +161,13 @@ through `pipx upgrade`.
 
 Current behavior:
 
-- On opening `listkit config`, quietly check GitHub Releases.
-- If a newer version exists, show the config menu item as `Check for Updates (1)`.
-- Opening that item should show the available version, release notes, and choices:
+- On opening Settings, quietly check GitHub Releases once per app session.
+- If no newer version exists, keep the row as `Check for Updates`; after the
+  user manually checks, update it inline to `Check for Updates: up to date`.
+- If an update check fails after a manual check, update the row inline to
+  `Check for Updates: unavailable`.
+- If a newer version exists, show the settings row as `Update to vX.Y.Z`.
+- Opening that item shows the available version, release notes, and choices:
   - show the manual update command
   - skip this version
   - back
@@ -170,7 +178,7 @@ Current behavior:
 
 Future improvement:
 
-- Cache the update check result for about a day so the config menu stays fast.
+- Cache the update check result for about a day so Settings stays fast.
 - Add lightweight startup update awareness without checking GitHub on every
   launch. Store `last_update_check_at` and possibly
   `launch_count_since_update_check` in `config.json`. On normal `listkit`
@@ -178,7 +186,7 @@ Future improvement:
   - the last check was more than about 30 days ago, or
   - the app has launched about 10 times since the last check.
 - If a startup check finds an update, show a small non-blocking notice that
-  points users to `listkit config > Check for Updates`. Keep the full changelog,
+  points users to Settings. Keep the full changelog,
   skip, and copied update-command flow inside config.
 
 Do not make the app run `pipx upgrade` automatically in the first version of
@@ -229,36 +237,30 @@ the tagged commit. If a release tag says `v0.1.9` but `pyproject.toml` still say
 Test releases can be deleted after validation. Delete both the release and the
 tag when cleaning up test-only versions.
 
-### Mole-Style Terminal App UX
+### Textual Terminal App UX
 
-Revisit this after the core creation/config/template flows are more stable.
+`listkit` now uses a Textual app shell instead of the old linear prompt flow.
+The goal is to feel like a small terminal application while still running fully
+inside Terminal.
 
-Current `listkit` behavior is a linear prompt flow: prompt, answer, prompt,
-answer, print output. Longer term, the CLI should feel more like a terminal
-application while still running fully inside Terminal.
+Current top-level menu:
 
-Recommended direction:
+- Add from Template
+- Create Template from List
+- Settings
+- Help
+- ⏻ Quit
 
-- Add a top-level menu when running `listkit` with no arguments:
-  - Create List
-  - Manage Templates
-  - Config
-  - Help
-  - Quit
-- Give each screen a consistent shape:
-  - title
-  - short status/context line
-  - body/menu
-  - footer with controls, such as `[↑↓ select | Enter confirm | Esc back | Ctrl-C quit]`
-- Prefer redrawing screens over leaving every previous prompt in scrollback.
-  This is the main shift from “chatty wizard” to “terminal app.”
-- Keep questionary for the first pass if it remains adequate.
-- Consider a real TUI framework later, such as Textual or a direct
-  `prompt_toolkit` application, if questionary becomes too limiting.
+Each screen should keep a consistent shape:
 
-Do not start with a full TUI rewrite. First add the main menu and consistent
-screen footer once the user flows are stable enough that the layout will not be
-rewritten every few commits.
+- orange title
+- short blue status/context line
+- body/menu
+- orange footer controls, such as `[↑↓ select | ENTER confirm | ESC back | Ctrl-C quit]`
+
+Visible navigation rows should use **↩ Back**. App exit should use **⏻ Quit**.
+Avoid adding dead-end informational screens when inline feedback or a recoverable
+picker state will do.
 
 ### Template Storage Model
 
@@ -315,7 +317,7 @@ omitted.
 Implemented as an app-level action in the main `listkit` flow:
 
 ```text
-[ + Create Template from List ]
+Create Template from List
 ```
 
 Current flow:
@@ -325,6 +327,11 @@ Current flow:
 3. Read incomplete reminders from that list.
 4. Ask for a template name and optional short name.
 5. Save a new list template file under `templates/lists/`.
+
+If the selected Reminders list is empty, create a shell template with one blank
+item placeholder. Blank placeholder items are valid in JSON but are ignored at
+runtime until named. If a user selects a template with no named items, return to
+template selection with a warning instead of entering the add-items flow.
 
 Initial scope should stay conservative:
 
@@ -441,7 +448,7 @@ Suggested structure:
 
 Retention should be simple, such as keeping the last 10 backups per file.
 
-A future `Restore from Backup` config menu item can restore app-owned files.
+A future `Restore from Backup` Settings item can restore app-owned files.
 Avoid promising full Apple Reminders restore. A safer Reminders-specific feature
 would be `undo last creation`, based on a log of the exact reminder IDs or item
 names created by the most recent run.

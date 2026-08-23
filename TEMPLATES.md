@@ -118,7 +118,7 @@ listkit beach
 | `short_name` | No | Template | Optional command shortcut, such as `chili` for `listkit chili`. |
 | `default_batch` | No | Template | Positive number used as the default batch size. Leave blank or omit it to skip the batch-size prompt. |
 | `items` | Yes | Template | Array of items to add to Reminders. |
-| `name` | Yes | Item | Item name shown in ListKit and sent to Reminders. |
+| `name` | Yes | Item | Item name shown in ListKit and sent to Reminders. A blank string is allowed as an editable placeholder, but blank items are ignored when running a template. |
 | `quantity` | No | Item | Number scaled by batch size when present. Leave blank or omit it for plain checklist items. |
 | `unit` | No | Item | Singular unit name, such as `can`, `clove`, `tbsp`, or `lb`. |
 | `always_on_hand` | No | Item | `true` means the item starts unchecked when on-hand items are excluded. Defaults to `false`. Useful for recipe pantry staples, travel items you usually keep packed, or store items you buy only sometimes. |
@@ -167,6 +167,22 @@ This is useful for templates created from Reminders lists. You can leave those
 fields blank for a basic list, or fill them in later to turn items into
 recipe-style entries.
 
+Blank item names are allowed only as placeholders:
+
+```json
+{
+  "name": "",
+  "quantity": "",
+  "unit": "",
+  "always_on_hand": false
+}
+```
+
+This is most useful when creating a shell template from an empty Reminders list.
+ListKit ignores blank placeholder items until you give them names. If a template
+has no named items, ListKit will return to template selection and ask you to edit
+the JSON first.
+
 If an item has a `quantity` but no `unit`, ListKit treats it as a count:
 
 ```json
@@ -200,7 +216,7 @@ listkit
 Then choose:
 
 ```text
-[ + Create Template from List ]
+Create Template from List
 ```
 
 ListKit will ask which Apple Reminders list to import, then ask for a template
@@ -208,6 +224,14 @@ name and short name. It creates a new file under `templates/lists/`.
 
 Generated templates include blank `default_batch`, `quantity`, and `unit` fields
 so they can be edited into recipe-style templates later.
+
+You can also create a template from an empty Reminders list. This creates a
+shell JSON file with one blank item placeholder, which is useful when you want
+to start editing a template by hand.
+
+To edit or remove templates from Finder, open `listkit`, choose **Help**, then
+choose **Open Templates Folder**. Deleting a template JSON file removes it from
+the template picker the next time **Add from Template** opens.
 
 ## Future Notes
 
