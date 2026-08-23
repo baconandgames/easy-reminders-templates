@@ -312,8 +312,9 @@ class ListKitApp(App[int]):
 	def show_main_menu(self) -> None:
 		self.view_name = "main"
 		self.set_header(
-			f"{LISTKIT_BANNER}Documentation: [link]\nReusable templates for Apple Reminders.\nVersion {get_current_version()}",
+			f"{LISTKIT_BANNER}Reusable templates for Apple Reminders.\n[#777777]Version {get_current_version()}[/]",
 			MAIN_MENU_INSTRUCTIONS,
+			markup=True,
 		)
 		self.set_footer("[↑↓ select | ENTER confirm | ESC exit | Ctrl-C quit]")
 		menu = self.build_list(
@@ -994,8 +995,8 @@ class ListKitApp(App[int]):
 		(self.templates_path / "lists").mkdir(exist_ok=True)
 		(self.templates_path / "recipes").mkdir(exist_ok=True)
 
-	def set_header(self, title: str, context: str) -> None:
-		self.query_one("#title", Static).update(escape(title))
+	def set_header(self, title: str, context: str, markup: bool = False) -> None:
+		self.query_one("#title", Static).update(title if markup else escape(title))
 		self.query_one("#context", Static).update(escape(context))
 
 	def set_footer(self, text: str) -> None:
