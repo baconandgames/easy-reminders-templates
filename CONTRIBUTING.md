@@ -35,3 +35,19 @@ experiments that do not fit the maintainer-directed roadmap.
 
 Maintainer time is limited, so there is no guaranteed review or support
 timeline.
+
+## AI Assistance
+
+Parts of this project, including code, documentation, and UX iteration, are
+developed with assistance from AI coding tools.
+
+AI assistance is part of the development workflow, but it does not replace human
+review, testing, or maintenance. Accepted changes are reviewed, edited, tested,
+and maintained by the project maintainer.
+
+This project is still in an early maintainer-directed phase and is not currently
+accepting pull requests. Once pull requests are in scope, contributors may use
+AI tools, but should mention AI-assisted work in the pull request. AI-assisted
+changes should be reviewed with the same care as any other code, and
+contributors are expected to understand, test, and take responsibility for the
+work they submit.
