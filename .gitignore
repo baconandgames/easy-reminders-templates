@@ -1,5 +1,7 @@
 .DS_Store
 
+DEVELOPMENT.md
+
 __pycache__/
 *.py[cod]
 
