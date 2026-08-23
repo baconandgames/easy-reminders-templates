@@ -213,12 +213,20 @@ PYTHONPATH=. python -m recipe_shopper.cli --version
 ```
 
 5. Commit the version bump and code/docs changes.
-6. Push `main`.
-7. Create a GitHub Release whose tag exactly matches the package version:
+6. Merge the release branch into `main`.
+7. Confirm `main` contains the exact release commit:
+
+```sh
+git branch --show-current
+git log --oneline -1
+```
+
+8. Push `main`.
+9. Create a GitHub Release whose tag exactly matches the package version:
    `v0.1.9` for package version `0.1.9`.
-8. Confirm the release tag points at the commit containing that same
+10. Confirm the release tag points at the commit containing that same
    `pyproject.toml` version.
-9. On a test Mac, run:
+11. On a test Mac, run:
 
 ```sh
 pipx upgrade easy-reminder-templates
@@ -261,6 +269,11 @@ Each screen should keep a consistent shape:
 Visible navigation rows should use **↩ Back**. App exit should use **⏻ Quit**.
 Avoid adding dead-end informational screens when inline feedback or a recoverable
 picker state will do.
+
+Next-session refactor candidate: split `recipe_shopper/app_shell.py` by concern
+before adding another large UI pass. The current file now owns screen flow,
+styling, update handling, template actions, and shell helpers, so smaller modules
+would make future screen work easier to review and test.
 
 ### Template Storage Model
 
