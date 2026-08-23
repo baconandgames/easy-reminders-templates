@@ -941,13 +941,17 @@ def test_resolve_relaunch_command_prefers_listkit_script(monkeypatch, tmp_path) 
 	listkit_path.write_text("#!/bin/sh\n", encoding="utf-8")
 	monkeypatch.setattr(app_shell.sys, "argv", [str(listkit_path)])
 
-	assert app_shell.resolve_relaunch_command() == [str(listkit_path)]
+	assert app_shell.resolve_relaunch_command() == ["/bin/sh", "-lc", f"sleep 0.3; exec {str(listkit_path)!r}"]
 
 
 def test_resolve_relaunch_command_falls_back_to_module(monkeypatch) -> None:
 	monkeypatch.setattr(app_shell.sys, "argv", ["pytest"])
 
-	assert app_shell.resolve_relaunch_command() == [app_shell.sys.executable, "-m", "recipe_shopper.cli"]
+	assert app_shell.resolve_relaunch_command() == [
+		"/bin/sh",
+		"-lc",
+		f"sleep 0.3; exec {app_shell.sys.executable!r} -m recipe_shopper.cli",
+	]
 
 
 def test_view_release_opens_default_browser(monkeypatch, tmp_path) -> None:

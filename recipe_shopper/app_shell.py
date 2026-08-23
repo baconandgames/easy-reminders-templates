@@ -1218,7 +1218,7 @@ class ListKitApp(App[int]):
 
 	def relaunch(self) -> None:
 		command = resolve_relaunch_command()
-		subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+		subprocess.Popen(command)
 		self.exit(0)
 
 	def skip_update(self, version: str) -> None:
@@ -1935,8 +1935,8 @@ def render_update_failure(result: UpdateResult) -> str:
 def resolve_relaunch_command() -> list[str]:
 	command_path = Path(sys.argv[0])
 	if command_path.name == "listkit" and command_path.exists():
-		return [str(command_path)]
-	return [sys.executable, "-m", "recipe_shopper.cli"]
+		return ["/bin/sh", "-lc", f"sleep 0.3; exec {str(command_path)!r}"]
+	return ["/bin/sh", "-lc", f"sleep 0.3; exec {sys.executable!r} -m recipe_shopper.cli"]
 
 
 def copy_text_to_clipboard(text: str) -> bool:
