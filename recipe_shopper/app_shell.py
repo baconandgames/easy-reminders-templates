@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import re
 import subprocess
+import sys
 import webbrowser
 from dataclasses import replace
 from pathlib import Path
@@ -33,12 +34,14 @@ from recipe_shopper.templates import (
 	template_uses_batch_size,
 )
 from recipe_shopper.updates import (
-	UPDATE_COMMAND,
+	GITHUB_ISSUES_URL,
 	ReleaseInfo,
 	UpdateCheckError,
+	UpdateResult,
 	fetch_latest_release,
 	get_current_version,
 	is_newer_version,
+	run_package_update,
 )
 
 
@@ -296,6 +299,8 @@ class ListKitApp(App[int]):
 		self.config_color_setting: str = ""
 		self.update_status: UpdateStatus | None = None
 		self.update_check_requested: bool = False
+		self.update_release: ReleaseInfo | None = None
+		self.update_result: UpdateResult | None = None
 		self.template_source_target: DeliveryTargetOption | None = None
 		self.template_item_names: list[str] = []
 		self.template_name: str = ""
@@ -1096,12 +1101,14 @@ class ListKitApp(App[int]):
 			return
 		release = status.latest_release or status.skipped_release
 		assert release is not None
+		self.update_release = release
 		self.set_header("Update Available", f"Current: {status.current_version}  Latest: {release.version}")
 		self.set_footer("[↑↓ select | ENTER confirm | ESC back | Ctrl-C quit]")
 		body = render_update_summary(release)
 		menu = self.build_list(
 			[
-				(f"Update to v{release.version}", "config:update_command"),
+				(f"Update to v{release.version}", "config:run_update"),
+				("View Release on GitHub", "config:view_release"),
 				(f"Skip v{release.version}", f"config:skip_update:{release.version}"),
 				("↩ Back", "config:updates_back"),
 			]
@@ -1121,11 +1128,70 @@ class ListKitApp(App[int]):
 			return UpdateStatus(current_version=current_version, skipped_release=latest_release)
 		return UpdateStatus(current_version=current_version, latest_release=latest_release)
 
-	def show_update_command(self) -> None:
-		self.view_name = "config_update_command"
-		self.set_header("Update Command", "Run this command in Terminal.")
-		self.set_footer("[ENTER exit | ESC back | Ctrl-C quit]")
-		self.replace_body(Static(UPDATE_COMMAND))
+	def run_update(self) -> None:
+		release = self.update_release
+		if release is None:
+			self.show_update_screen()
+			return
+
+		self.view_name = "config_update_running"
+		self.set_header("Updating ListKit", f"Installing v{release.version}. This may take a moment.")
+		self.set_footer("[Ctrl-C quit]")
+		self.replace_body(Static("Running update..."))
+		self.refresh()
+		self.update_result = run_package_update()
+		if self.update_result.success:
+			self.show_update_success(release)
+		else:
+			self.show_update_failure(release, self.update_result)
+
+	def show_update_success(self, release: ReleaseInfo) -> None:
+		self.view_name = "config_update_success"
+		self.set_header("Update Complete", f"Successfully updated to v{release.version}. Restart required.")
+		self.set_footer("[ENTER quit and relaunch | Ctrl-C quit]")
+		body = "ListKit needs to restart before the new version is active."
+		menu = self.build_list([("Quit and Relaunch", "config:relaunch")])
+		self.replace_body(Static(body), menu)
+		menu.focus()
+
+	def show_update_failure(self, release: ReleaseInfo, result: UpdateResult) -> None:
+		self.view_name = "config_update_failure"
+		self.set_header("Update Failed", f"v{release.version} could not be installed.")
+		self.set_footer("[↑↓ select | ENTER confirm | ESC back | Ctrl-C quit]")
+		body = render_update_failure(result)
+		menu = self.build_list(
+			[
+				("Copy Error and Open GitHub Issue", "config:copy_error_issue"),
+				("Copy Error", "config:copy_error"),
+				("View Release on GitHub", "config:view_release"),
+				("↩ Back", "config:updates_back"),
+			]
+		)
+		self.replace_body(Static(body), menu)
+		menu.focus()
+
+	def view_release_on_github(self) -> None:
+		if self.update_release is None or self.update_release.url == "":
+			self.query_one("#context", Static).update("Release URL is unavailable.")
+			return
+		webbrowser.open(self.update_release.url)
+		self.query_one("#context", Static).update("Opened release in your default browser.")
+
+	def copy_update_error(self, open_issue: bool = False) -> None:
+		if self.update_result is None:
+			self.query_one("#context", Static).update("No update error is available.")
+			return
+		copied = copy_text_to_clipboard(render_update_failure(self.update_result))
+		if open_issue:
+			webbrowser.open(GITHUB_ISSUES_URL)
+			message = "Copied update error and opened GitHub Issues." if copied else "Opened GitHub Issues. Could not copy update error."
+		else:
+			message = "Copied update error." if copied else "Could not copy update error."
+		self.query_one("#context", Static).update(message)
+
+	def relaunch(self) -> None:
+		subprocess.Popen([sys.executable, "-m", "recipe_shopper.cli"])
+		self.exit(0)
 
 	def skip_update(self, version: str) -> None:
 		self.config = replace(self.config, skipped_update_version=version)
@@ -1190,8 +1256,16 @@ class ListKitApp(App[int]):
 			self.show_config_color_picker(value.rsplit(":", 1)[1])
 		elif value.startswith("config:set_color:"):
 			self.save_config_color(value.rsplit(":", 1)[1])
-		elif value == "config:update_command":
-			self.show_update_command()
+		elif value == "config:run_update":
+			self.run_update()
+		elif value == "config:view_release":
+			self.view_release_on_github()
+		elif value == "config:copy_error":
+			self.copy_update_error()
+		elif value == "config:copy_error_issue":
+			self.copy_update_error(open_issue=True)
+		elif value == "config:relaunch":
+			self.relaunch()
 		elif value.startswith("config:skip_update:"):
 			self.skip_update(value.rsplit(":", 1)[1])
 		elif value == "config:updates_back":
@@ -1445,11 +1519,10 @@ class ListKitApp(App[int]):
 			self.show_main_menu()
 		elif self.view_name == "error":
 			self.exit(self.result_code)
-		elif self.view_name in {"config_updates", "config_update_command"}:
-			if self.view_name == "config_update_command":
-				self.exit(0)
-			else:
-				self.show_config_menu()
+		elif self.view_name == "config_update_success":
+			self.relaunch()
+		elif self.view_name == "config_updates":
+			self.show_config_menu()
 
 	def action_back(self) -> None:
 		if self.view_name == "main":
@@ -1459,7 +1532,15 @@ class ListKitApp(App[int]):
 				self.exit(0)
 			else:
 				self.show_main_menu()
-		elif self.view_name in {"config_lists", "config_sort_order", "config_usage_history", "config_colors", "config_defaults", "config_updates"}:
+		elif self.view_name in {
+			"config_lists",
+			"config_sort_order",
+			"config_usage_history",
+			"config_colors",
+			"config_defaults",
+			"config_updates",
+			"config_update_failure",
+		}:
 			self.show_config_menu()
 		elif self.view_name.startswith("config_sort:"):
 			self.show_config_sort_order_menu()
@@ -1475,8 +1556,6 @@ class ListKitApp(App[int]):
 			self.show_config_defaults_menu()
 		elif self.view_name == "config_color_picker":
 			self.show_config_colors_menu()
-		elif self.view_name == "config_update_command":
-			self.show_update_screen()
 		elif self.view_name == "template":
 			self.show_main_menu()
 		elif self.view_name == "template_source":
@@ -1812,3 +1891,22 @@ def render_update_summary(release: ReleaseInfo) -> str:
 		"",
 	]
 	return "\n".join(lines)
+
+
+def render_update_failure(result: UpdateResult) -> str:
+	lines = ["Update failed."]
+	if result.command:
+		lines.extend(["", "Command", "-" * 36, " ".join(result.command)])
+	if result.error != "":
+		lines.extend(["", "Error", "-" * 36, result.error])
+	if result.output != "":
+		lines.extend(["", "Output", "-" * 36, result.output])
+	return "\n".join(lines)
+
+
+def copy_text_to_clipboard(text: str) -> bool:
+	try:
+		subprocess.run(["pbcopy"], input=text, text=True, check=True)
+	except (OSError, subprocess.CalledProcessError):
+		return False
+	return True

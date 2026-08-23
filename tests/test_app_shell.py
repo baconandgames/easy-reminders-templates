@@ -859,3 +859,120 @@ def test_settings_context_shows_version_status() -> None:
 			latest_release=app_shell.ReleaseInfo(version="0.3.0", name="v0.3.0", body="", url=""),
 		)
 	) == "Choose what you want to configure. v0.3.0 is available."
+
+
+def test_update_screen_includes_release_link(monkeypatch, tmp_path) -> None:
+	write_template(tmp_path)
+	monkeypatch.setattr(
+		ListKitApp,
+		"get_update_status",
+		lambda self: app_shell.UpdateStatus(
+			current_version="0.2.0",
+			latest_release=app_shell.ReleaseInfo(
+				version="0.3.0",
+				name="v0.3.0",
+				body="Release notes",
+				url="https://github.com/example/release",
+			),
+		),
+	)
+
+	async def run_app() -> None:
+		app = ListKitApp(Config(), tmp_path, start_config=True)
+		async with app.run_test() as pilot:
+			await pilot.pause()
+			app.show_update_screen()
+			await pilot.pause()
+			labels = [
+				item.label_text
+				for item in app.query_one(ListView).children
+				if isinstance(item, OptionItem)
+			]
+			assert labels == [
+				"Update to v0.3.0",
+				"View Release on GitHub",
+				"Skip v0.3.0",
+				"↩ Back",
+			]
+
+	asyncio.run(run_app())
+
+
+def test_run_update_shows_success_restart_screen(monkeypatch, tmp_path) -> None:
+	write_template(tmp_path)
+	monkeypatch.setattr(
+		app_shell,
+		"run_package_update",
+		lambda: app_shell.UpdateResult(success=True, command=("pipx", "upgrade", "easy-reminder-templates"), output="ok"),
+	)
+
+	async def run_app() -> None:
+		app = ListKitApp(Config(), tmp_path)
+		async with app.run_test() as pilot:
+			await pilot.pause()
+			app.update_release = app_shell.ReleaseInfo(
+				version="0.3.0",
+				name="v0.3.0",
+				body="",
+				url="https://github.com/example/release",
+			)
+			app.run_update()
+			await pilot.pause()
+			assert app.view_name == "config_update_success"
+			labels = [
+				item.label_text
+				for item in app.query_one(ListView).children
+				if isinstance(item, OptionItem)
+			]
+			assert labels == ["Quit and Relaunch"]
+
+	asyncio.run(run_app())
+
+
+def test_view_release_opens_default_browser(monkeypatch, tmp_path) -> None:
+	write_template(tmp_path)
+	opened_urls: list[str] = []
+	monkeypatch.setattr(app_shell.webbrowser, "open", lambda url: opened_urls.append(url))
+
+	async def run_app() -> None:
+		app = ListKitApp(Config(), tmp_path)
+		async with app.run_test() as pilot:
+			await pilot.pause()
+			app.update_release = app_shell.ReleaseInfo(
+				version="0.3.0",
+				name="v0.3.0",
+				body="",
+				url="https://github.com/example/release",
+			)
+			app.view_release_on_github()
+			await pilot.pause()
+
+	asyncio.run(run_app())
+
+	assert opened_urls == ["https://github.com/example/release"]
+
+
+def test_copy_error_and_open_issue(monkeypatch, tmp_path) -> None:
+	write_template(tmp_path)
+	copied_text: list[str] = []
+	opened_urls: list[str] = []
+	monkeypatch.setattr(app_shell, "copy_text_to_clipboard", lambda text: copied_text.append(text) or True)
+	monkeypatch.setattr(app_shell.webbrowser, "open", lambda url: opened_urls.append(url))
+
+	async def run_app() -> None:
+		app = ListKitApp(Config(), tmp_path)
+		async with app.run_test() as pilot:
+			await pilot.pause()
+			app.update_result = app_shell.UpdateResult(
+				success=False,
+				command=("pipx", "upgrade", "easy-reminder-templates"),
+				output="failed output",
+				error="Command exited with 1.",
+			)
+			app.copy_update_error(open_issue=True)
+			await pilot.pause()
+
+	asyncio.run(run_app())
+
+	assert "failed output" in copied_text[0]
+	assert opened_urls == [app_shell.GITHUB_ISSUES_URL]

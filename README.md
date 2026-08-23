@@ -74,8 +74,9 @@ listkit config
 ```
 
 The update checker uses GitHub Releases. If a newer release exists, `listkit`
-shows its changelog before offering the manual update command. You can also skip
-that release; a later release will appear again.
+shows its changelog and can install the update from inside Settings. After a
+successful update, ListKit prompts you to quit and relaunch so the new version is
+active. You can also skip that release; a later release will appear again.
 
 For maintainers: the GitHub Release tag and the package version in
 `pyproject.toml` must match for `pipx upgrade` to install the expected version.
