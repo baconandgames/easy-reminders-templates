@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
 import sys
@@ -74,6 +75,7 @@ CONFIG_COLOR_DEFAULTS: dict[str, str] = {
 	"selection_color": Config.selection_color,
 	"omitted_ingredient_color": Config.omitted_ingredient_color,
 }
+DEV_RELAUNCH_TEST_ENV: str = "LISTKIT_DEV_RELAUNCH_TEST"
 COLOR_SETTING_LABELS: dict[str, str] = {
 	"standard_text_color": "Standard Text Color",
 	"quantity_color": "Quantity Color",
@@ -344,14 +346,17 @@ class ListKitApp(App[int]):
 			markup=True,
 		)
 		self.set_footer("[↑↓ select | ENTER confirm | ESC exit | Ctrl-C quit]")
+		options = [
+			("Add from Template", "create_list"),
+			("Create Template from List", "create_template"),
+			("Settings", "config"),
+			("Help", "help"),
+		]
+		if os.environ.get(DEV_RELAUNCH_TEST_ENV) == "1":
+			options.append(("Quit/Relaunch Test", "dev:relaunch"))
+		options.append(("⏻ Quit", "exit"))
 		menu = self.build_list(
-			[
-				("Add from Template", "create_list"),
-				("Create Template from List", "create_template"),
-				("Settings", "config"),
-				("Help", "help"),
-				("⏻ Quit", "exit"),
-			]
+			options
 		)
 		self.replace_body(Static("", classes="menu-spacer"), menu)
 		menu.focus()
@@ -1445,6 +1450,8 @@ class ListKitApp(App[int]):
 			self.show_config_menu()
 		elif value == "help":
 			self.show_help()
+		elif value == "dev:relaunch":
+			self.relaunch()
 		elif value == "help:open_templates":
 			self.open_templates_folder()
 		elif value == "help:open_docs":
