@@ -1,4 +1,4 @@
-# Easy Reminder Templates
+# Easy Reminders Templates
 
 > Alpha software: this project is actively changing and should be used at your
 > own risk while it is in development. It can create real Apple Reminders items,
