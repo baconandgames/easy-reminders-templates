@@ -276,6 +276,7 @@ class ListKitApp(App[int]):
 		short_name: str | None = None,
 		config_path: Path | None = None,
 		start_config: bool = False,
+		check_updates_on_launch: bool = False,
 	) -> None:
 		super().__init__()
 		self.config = config
@@ -283,6 +284,7 @@ class ListKitApp(App[int]):
 		self.templates_path = templates_path
 		self.short_name = short_name
 		self.start_config = start_config
+		self.check_updates_on_launch = check_updates_on_launch
 		self.templates: TemplateMap = {}
 		self.template: dict[str, Any] | None = None
 		self.template_id: str = ""
@@ -303,6 +305,7 @@ class ListKitApp(App[int]):
 		self.update_release: ReleaseInfo | None = None
 		self.update_result: UpdateResult | None = None
 		self.update_worker: Worker | None = None
+		self.launch_update_worker: Worker | None = None
 		self.template_source_target: DeliveryTargetOption | None = None
 		self.template_item_names: list[str] = []
 		self.template_name: str = ""
@@ -335,26 +338,41 @@ class ListKitApp(App[int]):
 			return
 
 		self.show_main_menu()
+		if self.check_updates_on_launch:
+			self.start_launch_update_check()
 
 	def show_main_menu(self) -> None:
 		self.view_name = "main"
 		self.set_header(
-			f"{LISTKIT_BANNER}Reusable templates for Apple Reminders.\n[#777777]Version {get_current_version()}[/]",
+			f"{LISTKIT_BANNER}Easy template manager for Apple Reminders.\n[#777777]Version {get_current_version()}[/]",
 			MAIN_MENU_INSTRUCTIONS,
 			markup=True,
 		)
 		self.set_footer("[↑↓ select | ENTER confirm | ESC exit | Ctrl-C quit]")
+		options = [
+			("Add from Template", "create_list"),
+			("Create Template from List", "create_template"),
+			("Settings", "config"),
+			("Help", "help"),
+		]
+		if self.update_status is not None and self.update_status.latest_release is not None:
+			options.insert(0, (format_launch_update_label(self.update_status), "config:updates"))
 		menu = self.build_list(
-			[
-				("Add from Template", "create_list"),
-				("Create Template from List", "create_template"),
-				("Settings", "config"),
-				("Help", "help"),
-				("⏻ Quit", "exit"),
-			]
+			[*options, ("⏻ Quit", "exit")],
+			markup=True,
 		)
 		self.replace_body(Static("", classes="menu-spacer"), menu)
 		menu.focus()
+
+	def start_launch_update_check(self) -> None:
+		if self.update_status is not None or self.launch_update_worker is not None:
+			return
+		self.launch_update_worker = self.run_worker(
+			self.get_update_status,
+			name="launch-update-check",
+			thread=True,
+			exclusive=True,
+		)
 
 	def show_template_menu(self, warning: str = "") -> None:
 		self.view_name = "template"
@@ -1104,7 +1122,11 @@ class ListKitApp(App[int]):
 		release = status.latest_release or status.skipped_release
 		assert release is not None
 		self.update_release = release
-		self.set_header("Update Available", f"Current: {status.current_version}  Latest: {release.version}")
+		self.set_header(
+			"[bold #ff3b30]Update Available[/]",
+			f"Review this release, then update, view it on GitHub, skip it, or go back.\nUpdate available: v{status.current_version} > v{release.version}",
+			markup=True,
+		)
 		self.set_footer("[↑↓ select | ENTER confirm | ESC back | Ctrl-C quit]")
 		body = render_update_summary(release)
 		menu = self.build_list(
@@ -1151,6 +1173,14 @@ class ListKitApp(App[int]):
 		)
 
 	def on_worker_state_changed(self, event: Worker.StateChanged) -> None:
+		if event.worker is self.launch_update_worker:
+			if event.state == WorkerState.SUCCESS and isinstance(event.worker.result, UpdateStatus):
+				self.update_status = event.worker.result
+				if self.view_name == "main" and self.update_status.latest_release is not None:
+					self.show_main_menu()
+			if event.state in {WorkerState.SUCCESS, WorkerState.ERROR, WorkerState.CANCELLED}:
+				self.launch_update_worker = None
+			return
 		if event.worker is not self.update_worker:
 			return
 		release = self.update_release
@@ -1631,6 +1661,7 @@ def run_textual_listkit(
 		short_name=short_name,
 		config_path=config_path,
 		start_config=start_config,
+		check_updates_on_launch=True,
 	)
 	result = app.run()
 	if result in {10, 20, RELAUNCH_RESULT_CODE}:
@@ -1789,9 +1820,9 @@ def render_created_items_summary(created_items: list[str]) -> str:
 
 def format_settings_context(status: UpdateStatus) -> str:
 	if status.latest_release is not None:
-		return f"Choose what you want to configure. v{status.latest_release.version} is available."
+		return f"Choose what you want to configure.\nUpdate available: v{status.current_version} > v{status.latest_release.version}."
 	if status.skipped_release is not None:
-		return f"Choose what you want to configure. v{status.skipped_release.version} is available but skipped."
+		return f"Choose what you want to configure.\nUpdate available but skipped: v{status.current_version} > v{status.skipped_release.version}."
 	if status.error != "":
 		return f"Choose what you want to configure. Current version: v{status.current_version}."
 	return f"Choose what you want to configure. v{status.current_version} is up to date."
@@ -1807,6 +1838,12 @@ def format_update_menu_label(status: UpdateStatus, check_requested: bool = False
 	if check_requested:
 		return "Check for Updates: up to date"
 	return "Check for Updates"
+
+
+def format_launch_update_label(status: UpdateStatus) -> str:
+	if status.latest_release is None:
+		return "Update Available"
+	return f"[bold #ff3b30]Update Available: v{status.current_version} > v{status.latest_release.version}[/]"
 
 
 def is_empty_templates_error(error: TemplateLoadError) -> bool:

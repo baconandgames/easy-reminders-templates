@@ -70,7 +70,7 @@ listkit --version
 You can also check for updates from Settings:
 
 ```sh
-listkit config
+listkit settings
 ```
 
 The update checker uses GitHub Releases. If a newer release exists, `listkit`
@@ -86,7 +86,7 @@ For maintainers: the GitHub Release tag and the package version in
 Open Settings first:
 
 ```sh
-listkit config
+listkit settings
 ```
 
 Then create a list from a template:
@@ -226,7 +226,7 @@ Reminders list before adding the selected template items.
 When `apple_reminders_list_id` is set, it is preferred over
 `apple_reminders_list_name`.
 
-Run `listkit config` to open Settings. From there, choose which Apple Reminders
-lists appear as destinations, edit terminal colors, update common defaults, and
-check for GitHub release updates. Hidden lists are stored in
-`hidden_apple_reminders_list_ids`.
+Run `listkit settings` to open Settings; `listkit config` is also supported.
+From there, choose which Apple Reminders lists appear as destinations, edit
+terminal colors, update common defaults, and check for GitHub release updates.
+Hidden lists are stored in `hidden_apple_reminders_list_ids`.

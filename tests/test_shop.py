@@ -43,6 +43,24 @@ def test_main_execs_when_textual_requests_relaunch(monkeypatch, tmp_path) -> Non
 	]
 
 
+def test_main_treats_settings_like_config(monkeypatch, tmp_path) -> None:
+	captured_start_config: list[bool] = []
+
+	def fake_run_textual_listkit(_config, _templates_path, _short_name, _config_path, start_config):
+		captured_start_config.append(start_config)
+		return 0
+
+	monkeypatch.setattr(shop_script.sys, "argv", ["listkit", "settings"])
+	monkeypatch.setattr(shop_script, "get_project_root", lambda: tmp_path)
+	monkeypatch.setattr(shop_script, "resolve_config_path", lambda _project_dir: tmp_path / "config.json")
+	monkeypatch.setattr(shop_script, "resolve_templates_path", lambda _project_dir: tmp_path / "templates")
+	monkeypatch.setattr(shop_script, "load_config", lambda _config_path: Config())
+	monkeypatch.setattr(app_shell, "run_textual_listkit", fake_run_textual_listkit)
+
+	assert shop_script.main() == 0
+	assert captured_start_config == [True]
+
+
 def test_resolve_config_path_prefers_project_config(tmp_path) -> None:
 	project_dir = tmp_path / "project"
 	project_dir.mkdir()
@@ -110,7 +128,9 @@ def test_render_help_uses_app_color_scheme() -> None:
 
 	assert "\033[31mEasy Reminder Templates\033[0m" in help_text
 	assert "\033[36mlistkit\033[0m chili" in help_text
+	assert "\033[36mlistkit\033[0m settings" in help_text
 	assert "\033[36mlistkit\033[0m --version" in help_text
+	assert "\033[36msettings\033[0m                Open settings" in help_text
 	assert "\033[36mtemplate-short-name\033[0m     Optional shortcut for a template" in help_text
 
 

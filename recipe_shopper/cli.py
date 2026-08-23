@@ -271,7 +271,7 @@ def main() -> int:
 		print(f"Error: {error}", file=sys.stderr)
 		return 1
 
-	start_config: bool = args.short_name == "config"
+	start_config: bool = args.short_name in {"config", "settings"}
 	if start_config:
 		args.short_name = None
 
@@ -506,6 +506,7 @@ def render_help(config: Config) -> str:
 		style_text("Usage", colors.standard_text_color),
 		style_text("-----", colors.standard_text_color),
 		f"{style_text('listkit', config.quantity_color)} [template-short-name]",
+		f"{style_text('listkit', config.quantity_color)} settings",
 		f"{style_text('listkit', config.quantity_color)} config",
 		f"{style_text('listkit', config.quantity_color)} --version",
 		"",
@@ -514,11 +515,12 @@ def render_help(config: Config) -> str:
 		f"{style_text('listkit', config.quantity_color)}",
 		f"{style_text('listkit', config.quantity_color)} chili",
 		f"{style_text('listkit', config.quantity_color)} beach",
-		f"{style_text('listkit', config.quantity_color)} config",
+		f"{style_text('listkit', config.quantity_color)} settings",
 		f"{style_text('listkit', config.quantity_color)} --version",
 		"",
 		style_text("Commands", colors.standard_text_color),
 		style_text("--------", colors.standard_text_color),
+		render_help_row("settings", "Open settings", config.quantity_color),
 		render_help_row("config", "Open settings", config.quantity_color),
 		render_help_row("--version", "Show installed version", config.quantity_color),
 		"",

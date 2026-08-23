@@ -57,6 +57,34 @@ def test_main_menu_keeps_exit_listkit_keyboard_accessible(tmp_path) -> None:
 	asyncio.run(run_app())
 
 
+def test_main_menu_shows_launch_update_shortcut(monkeypatch, tmp_path) -> None:
+	write_template(tmp_path)
+	monkeypatch.setattr(
+		ListKitApp,
+		"get_update_status",
+		lambda self: app_shell.UpdateStatus(
+			current_version="0.4.7",
+			latest_release=app_shell.ReleaseInfo(version="0.4.8", name="v0.4.8", body="", url=""),
+		),
+	)
+
+	async def run_app() -> None:
+		app = ListKitApp(Config(), tmp_path, check_updates_on_launch=True)
+		async with app.run_test() as pilot:
+			for _ in range(20):
+				await pilot.pause()
+				labels = [
+					item.label_text
+					for item in app.query_one(ListView).children
+					if isinstance(item, OptionItem)
+				]
+				if any("Update Available" in label for label in labels):
+					break
+			assert "[bold #ff3b30]Update Available: v0.4.7 > v0.4.8[/]" in labels
+
+	asyncio.run(run_app())
+
+
 def test_new_list_escape_returns_to_target_picker(monkeypatch, tmp_path) -> None:
 	write_template(tmp_path)
 
@@ -858,7 +886,7 @@ def test_settings_context_shows_version_status() -> None:
 			current_version="0.2.0",
 			latest_release=app_shell.ReleaseInfo(version="0.3.0", name="v0.3.0", body="", url=""),
 		)
-	) == "Choose what you want to configure. v0.3.0 is available."
+	) == "Choose what you want to configure.\nUpdate available: v0.2.0 > v0.3.0."
 
 
 def test_update_screen_includes_release_link(monkeypatch, tmp_path) -> None:
