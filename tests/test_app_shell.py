@@ -80,7 +80,7 @@ def test_main_menu_shows_launch_update_shortcut(monkeypatch, tmp_path) -> None:
 				]
 				if any("Update Available" in label for label in labels):
 					break
-			assert "[bold #ff3b30]Update Available: v0.4.7 > v0.4.8[/]" in labels
+			assert "[bold]Update Available: v0.4.7 > v0.4.8[/]" in labels
 
 	asyncio.run(run_app())
 

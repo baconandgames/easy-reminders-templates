@@ -1846,7 +1846,7 @@ def format_update_menu_label(status: UpdateStatus, check_requested: bool = False
 def format_launch_update_label(status: UpdateStatus) -> str:
 	if status.latest_release is None:
 		return "Update Available"
-	return f"[bold #ff3b30]Update Available: v{status.current_version} > v{status.latest_release.version}[/]"
+	return f"[bold]Update Available: v{status.current_version} > v{status.latest_release.version}[/]"
 
 
 def is_empty_templates_error(error: TemplateLoadError) -> bool:
