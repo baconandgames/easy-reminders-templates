@@ -921,7 +921,10 @@ def test_run_update_shows_success_restart_screen(monkeypatch, tmp_path) -> None:
 				url="https://github.com/example/release",
 			)
 			app.run_update()
-			await pilot.pause()
+			for _ in range(20):
+				await pilot.pause()
+				if app.view_name == "config_update_success":
+					break
 			assert app.view_name == "config_update_success"
 			labels = [
 				item.label_text
@@ -931,6 +934,20 @@ def test_run_update_shows_success_restart_screen(monkeypatch, tmp_path) -> None:
 			assert labels == ["Quit and Relaunch"]
 
 	asyncio.run(run_app())
+
+
+def test_resolve_relaunch_command_prefers_listkit_script(monkeypatch, tmp_path) -> None:
+	listkit_path = tmp_path / "listkit"
+	listkit_path.write_text("#!/bin/sh\n", encoding="utf-8")
+	monkeypatch.setattr(app_shell.sys, "argv", [str(listkit_path)])
+
+	assert app_shell.resolve_relaunch_command() == [str(listkit_path)]
+
+
+def test_resolve_relaunch_command_falls_back_to_module(monkeypatch) -> None:
+	monkeypatch.setattr(app_shell.sys, "argv", ["pytest"])
+
+	assert app_shell.resolve_relaunch_command() == [app_shell.sys.executable, "-m", "recipe_shopper.cli"]
 
 
 def test_view_release_opens_default_browser(monkeypatch, tmp_path) -> None:

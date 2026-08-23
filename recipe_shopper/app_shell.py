@@ -12,7 +12,8 @@ from typing import Any
 from rich.markup import escape
 from textual.app import App, ComposeResult
 from textual.containers import Container, Vertical
-from textual.widgets import Input, Label, ListItem, ListView, Static
+from textual.worker import Worker, WorkerState
+from textual.widgets import Input, Label, ListItem, ListView, ProgressBar, Static
 
 from recipe_shopper.colors import HEX_COLOR_PATTERN, normalize_color
 from recipe_shopper.config import Config, save_config
@@ -301,6 +302,7 @@ class ListKitApp(App[int]):
 		self.update_check_requested: bool = False
 		self.update_release: ReleaseInfo | None = None
 		self.update_result: UpdateResult | None = None
+		self.update_worker: Worker | None = None
 		self.template_source_target: DeliveryTargetOption | None = None
 		self.template_item_names: list[str] = []
 		self.template_name: str = ""
@@ -1137,13 +1139,38 @@ class ListKitApp(App[int]):
 		self.view_name = "config_update_running"
 		self.set_header("Updating ListKit", f"Installing v{release.version}. This may take a moment.")
 		self.set_footer("[Ctrl-C quit]")
-		self.replace_body(Static("Running update..."))
-		self.refresh()
-		self.update_result = run_package_update(release.version)
-		if self.update_result.success:
+		self.replace_body(
+			Static("Running update..."),
+			ProgressBar(total=None, show_percentage=False, show_eta=False, id="update-progress"),
+		)
+		self.update_worker = self.run_worker(
+			lambda: run_package_update(release.version),
+			name="package-update",
+			thread=True,
+			exclusive=True,
+		)
+
+	def on_worker_state_changed(self, event: Worker.StateChanged) -> None:
+		if event.worker is not self.update_worker:
+			return
+		release = self.update_release
+		if event.state == WorkerState.ERROR:
+			result = UpdateResult(success=False, command=(), output="", error="Update worker failed unexpectedly.")
+			self.update_result = result
+			if release is not None:
+				self.show_update_failure(release, result)
+			return
+		if event.state != WorkerState.SUCCESS:
+			return
+		result = event.worker.result
+		if release is None or not isinstance(result, UpdateResult):
+			self.show_update_screen()
+			return
+		self.update_result = result
+		if result.success:
 			self.show_update_success(release)
 		else:
-			self.show_update_failure(release, self.update_result)
+			self.show_update_failure(release, result)
 
 	def show_update_success(self, release: ReleaseInfo) -> None:
 		self.view_name = "config_update_success"
@@ -1190,7 +1217,8 @@ class ListKitApp(App[int]):
 		self.query_one("#context", Static).update(message)
 
 	def relaunch(self) -> None:
-		subprocess.Popen([sys.executable, "-m", "recipe_shopper.cli"])
+		command = resolve_relaunch_command()
+		subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
 		self.exit(0)
 
 	def skip_update(self, version: str) -> None:
@@ -1902,6 +1930,13 @@ def render_update_failure(result: UpdateResult) -> str:
 	if result.output != "":
 		lines.extend(["", "Output", "-" * 36, result.output])
 	return "\n".join(lines)
+
+
+def resolve_relaunch_command() -> list[str]:
+	command_path = Path(sys.argv[0])
+	if command_path.name == "listkit" and command_path.exists():
+		return [str(command_path)]
+	return [sys.executable, "-m", "recipe_shopper.cli"]
 
 
 def copy_text_to_clipboard(text: str) -> bool:
