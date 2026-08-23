@@ -72,21 +72,35 @@ def test_resolve_update_command_uses_pipx_when_running_from_pipx(monkeypatch) ->
 	monkeypatch.setattr("recipe_shopper.updates.is_running_from_project_checkout", lambda: False)
 	monkeypatch.setattr("recipe_shopper.updates.find_pipx", lambda: "/opt/homebrew/bin/pipx")
 
-	assert resolve_update_command() == ("/opt/homebrew/bin/pipx", "upgrade", PACKAGE_NAME)
+	assert resolve_update_command("0.4.1") == (
+		"/opt/homebrew/bin/pipx",
+		"install",
+		"--force",
+		"--python",
+		sys.executable,
+		"git+https://github.com/baconandgames/easy-reminders-templates.git@v0.4.1",
+	)
 
 
 def test_resolve_update_command_uses_pip_for_non_project_install(monkeypatch) -> None:
 	monkeypatch.setattr("recipe_shopper.updates.is_running_from_pipx", lambda: False)
 	monkeypatch.setattr("recipe_shopper.updates.is_running_from_project_checkout", lambda: False)
 
-	assert resolve_update_command() == (sys.executable, "-m", "pip", "install", "--upgrade", PACKAGE_NAME)
+	assert resolve_update_command("0.4.1") == (
+		sys.executable,
+		"-m",
+		"pip",
+		"install",
+		"--upgrade",
+		"git+https://github.com/baconandgames/easy-reminders-templates.git@v0.4.1",
+	)
 
 
 def test_resolve_update_command_rejects_project_checkout(monkeypatch) -> None:
 	monkeypatch.setattr("recipe_shopper.updates.is_running_from_pipx", lambda: False)
 	monkeypatch.setattr("recipe_shopper.updates.is_running_from_project_checkout", lambda: True)
 
-	assert resolve_update_command() is None
+	assert resolve_update_command("0.4.1") is None
 
 
 def test_run_package_update_captures_failed_output(monkeypatch) -> None:
@@ -96,9 +110,9 @@ def test_run_package_update_captures_failed_output(monkeypatch) -> None:
 		assert check is False
 		return subprocess.CompletedProcess(command, 1, stdout="stdout text", stderr="stderr text")
 
-	monkeypatch.setattr("recipe_shopper.updates.resolve_update_command", lambda: ("pipx", "upgrade", PACKAGE_NAME))
+	monkeypatch.setattr("recipe_shopper.updates.resolve_update_command", lambda version: ("pipx", "upgrade", PACKAGE_NAME))
 
-	result = run_package_update(runner=fake_runner)
+	result = run_package_update("0.4.1", runner=fake_runner)
 
 	assert result.success is False
 	assert result.command == ("pipx", "upgrade", PACKAGE_NAME)

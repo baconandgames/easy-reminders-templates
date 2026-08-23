@@ -20,6 +20,7 @@ except ImportError:
 
 
 PACKAGE_NAME: str = "easy-reminder-templates"
+GITHUB_REPO_URL: str = "https://github.com/baconandgames/easy-reminders-templates.git"
 LATEST_RELEASE_URL: str = "https://api.github.com/repos/baconandgames/easy-reminders-templates/releases/latest"
 UPDATE_COMMAND: str = f"pipx upgrade {PACKAGE_NAME}"
 GITHUB_ISSUES_URL: str = "https://github.com/baconandgames/easy-reminders-templates/issues/new"
@@ -145,8 +146,8 @@ def parse_version_parts(value: str) -> tuple[int, ...]:
 	return tuple(parts)
 
 
-def run_package_update(runner: Callable[..., subprocess.CompletedProcess[str]] | None = None) -> UpdateResult:
-	command: tuple[str, ...] | None = resolve_update_command()
+def run_package_update(version: str, runner: Callable[..., subprocess.CompletedProcess[str]] | None = None) -> UpdateResult:
+	command: tuple[str, ...] | None = resolve_update_command(version)
 	if command is None:
 		return UpdateResult(
 			success=False,
@@ -168,10 +169,11 @@ def run_package_update(runner: Callable[..., subprocess.CompletedProcess[str]] |
 	return UpdateResult(success=True, command=command, output=output)
 
 
-def resolve_update_command() -> tuple[str, ...] | None:
+def resolve_update_command(version: str) -> tuple[str, ...] | None:
+	package_spec = format_release_package_spec(version)
 	pipx_path: str | None = find_pipx()
 	if is_running_from_pipx() and pipx_path is not None:
-		return (pipx_path, "upgrade", PACKAGE_NAME)
+		return (pipx_path, "install", "--force", "--python", sys.executable, package_spec)
 
 	if is_running_from_project_checkout():
 		return None
@@ -179,7 +181,11 @@ def resolve_update_command() -> tuple[str, ...] | None:
 	if is_running_from_pipx():
 		return None
 
-	return (sys.executable, "-m", "pip", "install", "--upgrade", PACKAGE_NAME)
+	return (sys.executable, "-m", "pip", "install", "--upgrade", package_spec)
+
+
+def format_release_package_spec(version: str) -> str:
+	return f"git+{GITHUB_REPO_URL}@v{normalize_version(version)}"
 
 
 def is_running_from_pipx() -> bool:
@@ -218,6 +224,6 @@ def format_unsupported_install_message() -> str:
 			"",
 			"Manual options:",
 			f"- pipx: {UPDATE_COMMAND}",
-			f"- pip: {sys.executable} -m pip install --upgrade {PACKAGE_NAME}",
+			f"- pip: {sys.executable} -m pip install --upgrade git+{GITHUB_REPO_URL}@vVERSION",
 		]
 	)

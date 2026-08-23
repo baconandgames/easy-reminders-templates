@@ -79,7 +79,7 @@ successful update, ListKit prompts you to quit and relaunch so the new version i
 active. You can also skip that release; a later release will appear again.
 
 For maintainers: the GitHub Release tag and the package version in
-`pyproject.toml` must match for `pipx upgrade` to install the expected version.
+`pyproject.toml` must match so the in-app updater installs the expected version.
 
 ## First Run
 

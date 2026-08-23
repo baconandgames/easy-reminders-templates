@@ -1139,7 +1139,7 @@ class ListKitApp(App[int]):
 		self.set_footer("[Ctrl-C quit]")
 		self.replace_body(Static("Running update..."))
 		self.refresh()
-		self.update_result = run_package_update()
+		self.update_result = run_package_update(release.version)
 		if self.update_result.success:
 			self.show_update_success(release)
 		else:

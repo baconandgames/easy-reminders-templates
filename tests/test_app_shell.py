@@ -903,7 +903,11 @@ def test_run_update_shows_success_restart_screen(monkeypatch, tmp_path) -> None:
 	monkeypatch.setattr(
 		app_shell,
 		"run_package_update",
-		lambda: app_shell.UpdateResult(success=True, command=("pipx", "upgrade", "easy-reminder-templates"), output="ok"),
+		lambda version: app_shell.UpdateResult(
+			success=True,
+			command=("pipx", "install", "--force", f"git+repo@v{version}"),
+			output="ok",
+		),
 	)
 
 	async def run_app() -> None:
