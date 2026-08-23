@@ -972,22 +972,14 @@ def test_run_update_shows_success_restart_screen(monkeypatch, tmp_path) -> None:
 	asyncio.run(run_app())
 
 
-def test_resolve_relaunch_command_prefers_listkit_script(monkeypatch, tmp_path) -> None:
-	listkit_path = tmp_path / "listkit"
-	listkit_path.write_text("#!/bin/sh\n", encoding="utf-8")
-	monkeypatch.setattr(app_shell.sys, "argv", [str(listkit_path)])
+def test_relaunch_exits_with_relaunch_result_code(monkeypatch, tmp_path) -> None:
+	app = ListKitApp(Config(), tmp_path)
+	exit_codes: list[int] = []
+	monkeypatch.setattr(app, "exit", lambda code=0: exit_codes.append(code))
 
-	assert app_shell.resolve_relaunch_command() == ["/bin/sh", "-lc", f"sleep 0.3; exec {str(listkit_path)!r}"]
+	app.relaunch()
 
-
-def test_resolve_relaunch_command_falls_back_to_module(monkeypatch) -> None:
-	monkeypatch.setattr(app_shell.sys, "argv", ["pytest"])
-
-	assert app_shell.resolve_relaunch_command() == [
-		"/bin/sh",
-		"-lc",
-		f"sleep 0.3; exec {app_shell.sys.executable!r} -m recipe_shopper.cli",
-	]
+	assert exit_codes == [app_shell.RELAUNCH_RESULT_CODE]
 
 
 def test_view_release_opens_default_browser(monkeypatch, tmp_path) -> None:

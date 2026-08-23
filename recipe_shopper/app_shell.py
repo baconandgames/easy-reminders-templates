@@ -4,7 +4,6 @@ import json
 import os
 import re
 import subprocess
-import sys
 import webbrowser
 from dataclasses import replace
 from pathlib import Path
@@ -76,6 +75,7 @@ CONFIG_COLOR_DEFAULTS: dict[str, str] = {
 	"omitted_ingredient_color": Config.omitted_ingredient_color,
 }
 DEV_RELAUNCH_TEST_ENV: str = "LISTKIT_DEV_RELAUNCH_TEST"
+RELAUNCH_RESULT_CODE: int = 30
 COLOR_SETTING_LABELS: dict[str, str] = {
 	"standard_text_color": "Standard Text Color",
 	"quantity_color": "Quantity Color",
@@ -1222,9 +1222,7 @@ class ListKitApp(App[int]):
 		self.query_one("#context", Static).update(message)
 
 	def relaunch(self) -> None:
-		command = resolve_relaunch_command()
-		subprocess.Popen(command)
-		self.exit(0)
+		self.exit(RELAUNCH_RESULT_CODE)
 
 	def skip_update(self, version: str) -> None:
 		self.config = replace(self.config, skipped_update_version=version)
@@ -1642,7 +1640,7 @@ def run_textual_listkit(
 		start_config=start_config,
 	)
 	result = app.run()
-	if result in {10, 20}:
+	if result in {10, 20, RELAUNCH_RESULT_CODE}:
 		return int(result)
 	return app.result_code
 
@@ -1937,13 +1935,6 @@ def render_update_failure(result: UpdateResult) -> str:
 	if result.output != "":
 		lines.extend(["", "Output", "-" * 36, result.output])
 	return "\n".join(lines)
-
-
-def resolve_relaunch_command() -> list[str]:
-	command_path = Path(sys.argv[0])
-	if command_path.name == "listkit" and command_path.exists():
-		return ["/bin/sh", "-lc", f"sleep 0.3; exec {str(command_path)!r}"]
-	return ["/bin/sh", "-lc", f"sleep 0.3; exec {sys.executable!r} -m recipe_shopper.cli"]
 
 
 def copy_text_to_clipboard(text: str) -> bool:

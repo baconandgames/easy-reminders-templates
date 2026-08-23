@@ -276,7 +276,7 @@ def main() -> int:
 		args.short_name = None
 
 	try:
-		from recipe_shopper.app_shell import run_textual_listkit
+		from recipe_shopper.app_shell import RELAUNCH_RESULT_CODE, run_textual_listkit
 	except ModuleNotFoundError as error:
 		if error.name not in {"textual", "rich"}:
 			raise
@@ -286,6 +286,8 @@ def main() -> int:
 	while True:
 		result: int = run_textual_listkit(config, templates_path, args.short_name, config_path, start_config=start_config)
 		start_config = False
+		if result == RELAUNCH_RESULT_CODE:
+			os.execv(sys.executable, [sys.executable, "-m", "recipe_shopper.cli"])
 		if result == 20:
 			try:
 				created_template_path = create_template_from_reminders_list(
