@@ -301,6 +301,8 @@ def test_start_config_opens_textual_config_menu(monkeypatch, tmp_path) -> None:
 				if isinstance(item, OptionItem)
 			]
 			assert "Manage Lists" in labels
+			assert "Sort Order" in labels
+			assert "Usage History" in labels
 			assert "Colors" in labels
 			assert "Defaults" in labels
 			assert "Check for Updates" in labels
@@ -392,7 +394,7 @@ def test_check_for_updates_refreshes_inline_when_current(monkeypatch, tmp_path) 
 		app = ListKitApp(Config(), tmp_path, start_config=True)
 		async with app.run_test() as pilot:
 			await pilot.pause()
-			await pilot.press("down", "down", "down", "enter")
+			await pilot.press("down", "down", "down", "down", "down", "enter")
 			await pilot.pause()
 			assert app.view_name == "config"
 			labels = [
@@ -468,6 +470,349 @@ def test_config_color_picker_saves_from_keyboard(tmp_path) -> None:
 	asyncio.run(run_app())
 
 	assert load_config(config_path).quantity_color == Config.quantity_color
+
+
+def test_sort_order_picker_saves_template_sort_order(tmp_path) -> None:
+	write_template(tmp_path)
+	config_path = tmp_path / "config.json"
+
+	async def run_app() -> None:
+		app = ListKitApp(Config(), tmp_path, config_path=config_path)
+		async with app.run_test() as pilot:
+			app.show_config_sort_order_picker("template_sort_order")
+			await pilot.pause()
+			await pilot.press("down", "enter")
+			await pilot.pause()
+			assert app.view_name == "config_sort_order"
+
+	asyncio.run(run_app())
+
+	assert load_config(config_path).template_sort_order == "name_desc"
+
+
+def test_sort_order_screens_include_back_rows(tmp_path) -> None:
+	write_template(tmp_path)
+
+	async def run_app() -> None:
+		app = ListKitApp(Config(), tmp_path)
+		async with app.run_test() as pilot:
+			app.show_config_sort_order_menu()
+			await pilot.pause()
+			sort_menu_labels = [
+				item.label_text
+				for item in app.query_one(ListView).children
+				if isinstance(item, OptionItem)
+			]
+			assert "↩ Back" in sort_menu_labels
+
+			app.show_config_sort_order_picker("template_sort_order")
+			await pilot.pause()
+			template_picker_labels = [
+				item.label_text
+				for item in app.query_one(ListView).children
+				if isinstance(item, OptionItem)
+			]
+			assert "↩ Back" in template_picker_labels
+			assert "Item Count Ascending" not in template_picker_labels
+			assert "Item Count Descending" not in template_picker_labels
+
+			app.show_config_sort_order_picker("reminders_list_sort_order")
+			await pilot.pause()
+			list_picker_labels = [
+				item.label_text
+				for item in app.query_one(ListView).children
+				if isinstance(item, OptionItem)
+			]
+			assert "↩ Back" in list_picker_labels
+			assert "Item Count Ascending" in list_picker_labels
+			assert "Item Count Descending" in list_picker_labels
+
+	asyncio.run(run_app())
+
+
+def test_template_menu_uses_configured_sort_order(tmp_path) -> None:
+	write_template(tmp_path)
+	second_template_path = tmp_path / "lists" / "big-list.json"
+	second_template_path.write_text(
+		json.dumps(
+			{
+				"type": "list",
+				"name": "Big List",
+				"short_name": "big",
+				"items": [
+					{"name": "Bananas", "quantity": None, "unit": None, "always_on_hand": False},
+					{"name": "Carrots", "quantity": None, "unit": None, "always_on_hand": False},
+				],
+			}
+		),
+		encoding="utf-8",
+	)
+
+	async def run_app() -> None:
+		app = ListKitApp(Config(template_sort_order="name_desc"), tmp_path)
+		async with app.run_test() as pilot:
+			await pilot.pause()
+			app.show_template_menu()
+			await pilot.pause()
+			labels = [
+				item.label_text
+				for item in app.query_one(ListView).children
+				if isinstance(item, OptionItem)
+			]
+			assert labels[:2] == ["Test List", "Big List"]
+
+	asyncio.run(run_app())
+
+
+def test_reminders_list_pickers_use_configured_sort_order(monkeypatch, tmp_path) -> None:
+	write_template(tmp_path)
+
+	class FakeAppleRemindersTarget:
+		def list_targets(self) -> list[DeliveryTargetOption]:
+			return [
+				DeliveryTargetOption("small-id", "Small", "iCloud", 1, []),
+				DeliveryTargetOption("large-id", "Large", "iCloud", 3, []),
+			]
+
+	monkeypatch.setattr(app_shell, "AppleRemindersTarget", FakeAppleRemindersTarget)
+
+	async def run_app() -> None:
+		app = ListKitApp(Config(reminders_list_sort_order="item_count_desc"), tmp_path)
+		async with app.run_test() as pilot:
+			app.show_config_list_visibility()
+			await pilot.pause()
+			labels = [
+				item.label_text
+				for item in app.query_one(ListView).children
+				if isinstance(item, OptionItem)
+			]
+			assert labels[:2] == ["[x] Large (3)", "[x] Small (1)"]
+
+	asyncio.run(run_app())
+
+
+def test_sort_helpers_support_requested_modes() -> None:
+	templates = {
+		"small": {"name": "Small", "items": [{"name": "A"}]},
+		"large": {"name": "Large", "items": [{"name": "A"}, {"name": ""}, {"name": "B"}]},
+	}
+	targets = [
+		DeliveryTargetOption("small-id", "Small", "iCloud", 1, []),
+		DeliveryTargetOption("large-id", "Large", "iCloud", 3, []),
+	]
+
+	assert [template["name"] for _id, template in app_shell.sort_templates(templates, "name_desc")] == ["Small", "Large"]
+	assert [template["name"] for _id, template in app_shell.sort_templates(templates, "most_frequently_used", {"small": {"name": "Small", "count": 2}})] == ["Small", "Large"]
+	assert [target.name for target in app_shell.sort_reminders_targets(targets, "item_count_desc")] == ["Large", "Small"]
+	assert [target.name for target in app_shell.sort_reminders_targets(targets, "most_frequently_used", {"small-id": {"name": "Small", "count": 2}})] == ["Small", "Large"]
+	assert app_shell.template_item_count(templates["large"]) == 2
+
+
+def test_successful_reminder_creation_records_usage(monkeypatch, tmp_path) -> None:
+	write_template(tmp_path)
+	config_path = tmp_path / "config.json"
+
+	class FakeAppleRemindersTarget:
+		def create_list(self, shopping_list, _config):
+			return app_shell.DeliveryResult(
+				target_app="apple_reminders",
+				target_name="Apple Reminders: Groceries",
+				created_items=[item.name for item in shopping_list.included_items],
+				omitted_items=[],
+			)
+
+	monkeypatch.setattr(app_shell, "AppleRemindersTarget", FakeAppleRemindersTarget)
+
+	async def run_app() -> None:
+		app = ListKitApp(Config(), tmp_path, config_path=config_path)
+		async with app.run_test() as pilot:
+			await pilot.pause()
+			app.start_template(next(iter(app.templates.values())), "lists/test-list")
+			app.delivery_target = DeliveryTargetOption("target-id", "Groceries", "iCloud", 0, [])
+			app.create_reminders()
+			await pilot.pause()
+			assert app.view_name == "result"
+
+	asyncio.run(run_app())
+
+	config = load_config(config_path)
+	assert config.template_usage_counts == {"lists/test-list": {"name": "Test List", "count": 1}}
+	assert config.reminders_list_usage_counts == {"target-id": {"name": "Groceries", "count": 1}}
+
+
+def test_usage_history_screens_show_counts_and_actions(monkeypatch, tmp_path) -> None:
+	write_template(tmp_path)
+
+	class FakeAppleRemindersTarget:
+		def list_targets(self) -> list[DeliveryTargetOption]:
+			return [
+				DeliveryTargetOption("target-id", "Groceries", "iCloud", 0, []),
+			]
+
+	monkeypatch.setattr(app_shell, "AppleRemindersTarget", FakeAppleRemindersTarget)
+
+	async def run_app() -> None:
+		app = ListKitApp(
+			Config(
+				template_usage_counts={"lists/test-list": {"name": "Test List", "count": 3}},
+				reminders_list_usage_counts={"target-id": {"name": "Groceries", "count": 2}},
+			),
+			tmp_path,
+		)
+		async with app.run_test() as pilot:
+			await pilot.pause()
+			app.show_usage_history_menu()
+			await pilot.pause()
+			usage_menu_labels = [
+				item.label_text
+				for item in app.query_one(ListView).children
+				if isinstance(item, OptionItem)
+			]
+			assert "Template Usage" in usage_menu_labels
+			assert "Reminders List Usage" in usage_menu_labels
+			assert "Open config.json" not in usage_menu_labels
+			assert "↩ Back" in usage_menu_labels
+
+			app.show_template_usage_history()
+			await pilot.pause()
+			template_list = app.query_one(ListView)
+			template_labels = [
+				item.label_text
+				for item in template_list.children
+				if isinstance(item, OptionItem)
+			]
+			assert "------------------------------------" in template_labels
+			assert "Test List: 3" in template_labels
+			assert "Reset All to Zero" in template_labels
+			assert "Open config.json" in template_labels
+			assert template_labels.index("") == template_labels.index("Open config.json") - 1
+			assert template_labels[template_list.index or 0] == "Open config.json"
+			assert "↩ Back" in template_labels
+
+			app.show_list_usage_history()
+			await pilot.pause()
+			list_view = app.query_one(ListView)
+			list_labels = [
+				item.label_text
+				for item in list_view.children
+				if isinstance(item, OptionItem)
+			]
+			assert "------------------------------------" in list_labels
+			assert "Groceries: 2" in list_labels
+			assert "Reset All to Zero" in list_labels
+			assert "Open config.json" in list_labels
+			assert list_labels.index("") == list_labels.index("Open config.json") - 1
+			assert list_labels[list_view.index or 0] == "Open config.json"
+			assert "↩ Back" in list_labels
+
+	asyncio.run(run_app())
+
+
+def test_reset_usage_history_clears_selected_counts(monkeypatch, tmp_path) -> None:
+	write_template(tmp_path)
+	config_path = tmp_path / "config.json"
+
+	class FakeAppleRemindersTarget:
+		def list_targets(self) -> list[DeliveryTargetOption]:
+			return []
+
+	monkeypatch.setattr(app_shell, "AppleRemindersTarget", FakeAppleRemindersTarget)
+
+	async def run_app() -> None:
+		app = ListKitApp(
+			Config(
+				template_usage_counts={"lists/test-list": {"name": "Test List", "count": 3}},
+				reminders_list_usage_counts={"target-id": {"name": "Groceries", "count": 2}},
+			),
+			tmp_path,
+			config_path=config_path,
+		)
+		async with app.run_test() as pilot:
+			await pilot.pause()
+			app.show_reset_usage_confirmation("template")
+			await pilot.press("enter")
+			await pilot.pause()
+			assert app.view_name == "config_template_usage"
+
+	asyncio.run(run_app())
+
+	config = load_config(config_path)
+	assert config.template_usage_counts == {}
+	assert config.reminders_list_usage_counts == {"target-id": {"name": "Groceries", "count": 2}}
+
+
+def test_reset_usage_confirmation_uses_confirm_cancel_options(tmp_path) -> None:
+	write_template(tmp_path)
+
+	async def run_app() -> None:
+		app = ListKitApp(Config(), tmp_path)
+		async with app.run_test() as pilot:
+			await pilot.pause()
+			app.show_reset_usage_confirmation("template")
+			await pilot.pause()
+			labels = [
+				item.label_text
+				for item in app.query_one(ListView).children
+				if isinstance(item, OptionItem)
+			]
+			assert labels == ["Confirm Reset", "Cancel"]
+
+	asyncio.run(run_app())
+
+
+def test_open_config_file_creates_file_and_uses_os_open(monkeypatch, tmp_path) -> None:
+	write_template(tmp_path)
+	config_path = tmp_path / "config.json"
+	opened_paths: list[str] = []
+
+	def fake_run(command, check):
+		opened_paths.append(command[1])
+
+	monkeypatch.setattr(app_shell.subprocess, "run", fake_run)
+
+	async def run_app() -> None:
+		app = ListKitApp(Config(), tmp_path, config_path=config_path)
+		async with app.run_test() as pilot:
+			await pilot.pause()
+			app.open_config_file()
+			await pilot.pause()
+
+	asyncio.run(run_app())
+
+	assert opened_paths == [str(config_path)]
+	assert config_path.exists()
+
+
+def test_usage_history_formatters_sort_counts() -> None:
+	templates = {
+		"small": {"name": "Small"},
+		"large": {"name": "Large"},
+		"unused": {"name": "Unused"},
+	}
+	targets = [
+		DeliveryTargetOption("small-id", "Small", "iCloud", 0, []),
+		DeliveryTargetOption("large-id", "Large", "iCloud", 0, []),
+		DeliveryTargetOption("unused-id", "Unused", "iCloud", 0, []),
+	]
+
+	assert app_shell.format_template_usage_rows(templates, {"small": {"name": "Small", "count": 1}, "large": {"name": "Large", "count": 3}}) == [
+		"------------------------------------",
+		"Large: 3",
+		"Small: 1",
+		"Unused: 0",
+	]
+	assert app_shell.format_reminders_list_usage_rows(targets, {"small-id": {"name": "Small", "count": 1}, "large-id": {"name": "Large", "count": 3}}) == [
+		"------------------------------------",
+		"Large: 3",
+		"Small: 1",
+		"Unused: 0",
+	]
+	assert app_shell.format_template_usage_rows(templates, {}) == [
+		"------------------------------------",
+		"Large: 0",
+		"Small: 0",
+		"Unused: 0",
+	]
 
 
 def test_render_created_items_summary_lists_created_items() -> None:

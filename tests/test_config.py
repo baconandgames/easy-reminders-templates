@@ -21,13 +21,17 @@ def test_load_config_uses_defaults_when_file_is_missing() -> None:
 	assert config.selection_color == "#ff4b1f"
 	assert config.omitted_ingredient_color == "#777777"
 	assert config.skipped_update_version == ""
+	assert config.template_sort_order == "name_asc"
+	assert config.reminders_list_sort_order == "name_asc"
+	assert config.template_usage_counts == {}
+	assert config.reminders_list_usage_counts == {}
 
 
 def test_load_config_reads_values() -> None:
 	with TemporaryDirectory() as directory:
 		path: Path = Path(directory) / "config.json"
 		path.write_text(
-			'{"target_app": "apple_reminders", "delivery_mode": "create", "apple_reminders_list_id": "abc123", "apple_reminders_list_name": "Shared Grocery", "hidden_apple_reminders_list_ids": ["list-1", "list-2"], "append_short_name": false, "include_on_hand_default": true, "standard_text_color": "white", "quantity_color": "#37B7F0", "selection_color": "red", "omitted_ingredient_color": "grey", "skipped_update_version": "0.1.5"}',
+			'{"target_app": "apple_reminders", "delivery_mode": "create", "apple_reminders_list_id": "abc123", "apple_reminders_list_name": "Shared Grocery", "hidden_apple_reminders_list_ids": ["list-1", "list-2"], "append_short_name": false, "include_on_hand_default": true, "standard_text_color": "white", "quantity_color": "#37B7F0", "selection_color": "red", "omitted_ingredient_color": "grey", "skipped_update_version": "0.1.5", "template_sort_order": "most_frequently_used", "reminders_list_sort_order": "item_count_desc", "template_usage_counts": {"lists/beach": {"name": "Beach Day", "count": 2}}, "reminders_list_usage_counts": {"abc123": {"name": "Shared Grocery", "count": 3}}}',
 			encoding="utf-8",
 		)
 
@@ -43,6 +47,10 @@ def test_load_config_reads_values() -> None:
 	assert config.selection_color == "red"
 	assert config.omitted_ingredient_color == "grey"
 	assert config.skipped_update_version == "0.1.5"
+	assert config.template_sort_order == "most_frequently_used"
+	assert config.reminders_list_sort_order == "item_count_desc"
+	assert config.template_usage_counts == {"lists/beach": {"name": "Beach Day", "count": 2}}
+	assert config.reminders_list_usage_counts == {"abc123": {"name": "Shared Grocery", "count": 3}}
 
 
 def test_load_config_rejects_invalid_boolean_values() -> None:
@@ -89,6 +97,10 @@ def test_save_config_writes_values() -> None:
 		assert data["hidden_apple_reminders_list_ids"] == ["list-1"]
 		assert data["selection_color"] == "#ff4b1f"
 		assert data["skipped_update_version"] == "0.1.5"
+		assert data["template_sort_order"] == "name_asc"
+		assert data["reminders_list_sort_order"] == "name_asc"
+		assert data["template_usage_counts"] == {}
+		assert data["reminders_list_usage_counts"] == {}
 
 
 def test_load_config_rejects_invalid_hidden_reminders_list_ids() -> None:
@@ -135,3 +147,39 @@ def test_load_config_ignores_legacy_delivery_mode() -> None:
 	config = load_config(path)
 
 	assert config.apple_reminders_list_name == "Groceries"
+
+
+def test_load_config_rejects_invalid_sort_order() -> None:
+	with TemporaryDirectory() as directory:
+		path: Path = Path(directory) / "config.json"
+		path.write_text('{"template_sort_order": "item_count_desc"}', encoding="utf-8")
+
+		try:
+			load_config(path)
+		except ConfigLoadError as error:
+			assert 'Config value "template_sort_order" must be one of:' in str(error)
+		else:
+			raise AssertionError("Expected ConfigLoadError")
+
+
+def test_load_config_rejects_invalid_usage_counts() -> None:
+	with TemporaryDirectory() as directory:
+		path: Path = Path(directory) / "config.json"
+		path.write_text('{"template_usage_counts": {"lists/beach": {"name": "Beach Day", "count": -1}}}', encoding="utf-8")
+
+		try:
+			load_config(path)
+		except ConfigLoadError as error:
+			assert 'Config value "template_usage_counts" must use records with string name and non-negative integer count.' == str(error)
+		else:
+			raise AssertionError("Expected ConfigLoadError")
+
+
+def test_load_config_migrates_legacy_integer_usage_counts() -> None:
+	with TemporaryDirectory() as directory:
+		path: Path = Path(directory) / "config.json"
+		path.write_text('{"template_usage_counts": {"lists/beach": 2}}', encoding="utf-8")
+
+		config = load_config(path)
+
+	assert config.template_usage_counts == {"lists/beach": {"name": "", "count": 2}}

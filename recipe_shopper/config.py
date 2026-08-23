@@ -8,10 +8,26 @@ from typing import Any
 from recipe_shopper.colors import normalize_color
 
 
+UsageRecord = dict[str, str | int]
+UsageCounts = dict[str, UsageRecord]
+
+
 DEFAULT_STANDARD_TEXT_COLOR: str = "#f2f0ea"
 DEFAULT_QUANTITY_COLOR: str = "#37b7f0"
 DEFAULT_SELECTION_COLOR: str = "#ff4b1f"
 DEFAULT_OMITTED_INGREDIENT_COLOR: str = "#777777"
+TEMPLATE_SORT_ORDER_OPTIONS: set[str] = {
+	"name_asc",
+	"name_desc",
+	"most_frequently_used",
+}
+REMINDERS_LIST_SORT_ORDER_OPTIONS: set[str] = {
+	"name_asc",
+	"name_desc",
+	"most_frequently_used",
+	"item_count_asc",
+	"item_count_desc",
+}
 
 
 @dataclass(frozen=True)
@@ -26,6 +42,10 @@ class Config:
 	selection_color: str = DEFAULT_SELECTION_COLOR
 	omitted_ingredient_color: str = DEFAULT_OMITTED_INGREDIENT_COLOR
 	skipped_update_version: str = ""
+	template_sort_order: str = "name_asc"
+	reminders_list_sort_order: str = "name_asc"
+	template_usage_counts: UsageCounts = field(default_factory=dict)
+	reminders_list_usage_counts: UsageCounts = field(default_factory=dict)
 
 
 class ConfigLoadError(Exception):
@@ -74,6 +94,20 @@ def load_config(path: Path) -> Config:
 		"skipped_update_version",
 		Config.skipped_update_version,
 	)
+	template_sort_order: str = _read_sort_order(
+		raw_data,
+		"template_sort_order",
+		Config.template_sort_order,
+		TEMPLATE_SORT_ORDER_OPTIONS,
+	)
+	reminders_list_sort_order: str = _read_sort_order(
+		raw_data,
+		"reminders_list_sort_order",
+		Config.reminders_list_sort_order,
+		REMINDERS_LIST_SORT_ORDER_OPTIONS,
+	)
+	template_usage_counts: UsageCounts = _read_usage_counts(raw_data, "template_usage_counts")
+	reminders_list_usage_counts: UsageCounts = _read_usage_counts(raw_data, "reminders_list_usage_counts")
 
 	return Config(
 		apple_reminders_list_id=apple_reminders_list_id,
@@ -86,6 +120,10 @@ def load_config(path: Path) -> Config:
 		selection_color=selection_color,
 		omitted_ingredient_color=omitted_ingredient_color,
 		skipped_update_version=skipped_update_version,
+		template_sort_order=template_sort_order,
+		reminders_list_sort_order=reminders_list_sort_order,
+		template_usage_counts=template_usage_counts,
+		reminders_list_usage_counts=reminders_list_usage_counts,
 	)
 
 
@@ -101,6 +139,10 @@ def save_config(path: Path, config: Config) -> None:
 		"selection_color": config.selection_color,
 		"omitted_ingredient_color": config.omitted_ingredient_color,
 		"skipped_update_version": config.skipped_update_version,
+		"template_sort_order": config.template_sort_order,
+		"reminders_list_sort_order": config.reminders_list_sort_order,
+		"template_usage_counts": config.template_usage_counts,
+		"reminders_list_usage_counts": config.reminders_list_usage_counts,
 	}
 	path.write_text(f"{json.dumps(data, indent=2)}\n", encoding="utf-8")
 
@@ -150,3 +192,35 @@ def _read_color(raw_data: dict[str, Any], key: str, default: str) -> str:
 		raise ConfigLoadError(f'Config value "{key}" must be a color name or hex color.')
 
 	return normalize_color(value, default)
+
+
+def _read_sort_order(raw_data: dict[str, Any], key: str, default: str, valid_options: set[str]) -> str:
+	value: Any = raw_data.get(key, default)
+	if not isinstance(value, str) or value not in valid_options:
+		valid_values = ", ".join(sorted(valid_options))
+		raise ConfigLoadError(f'Config value "{key}" must be one of: {valid_values}.')
+
+	return value
+
+
+def _read_usage_counts(raw_data: dict[str, Any], key: str) -> UsageCounts:
+	value: Any = raw_data.get(key, {})
+	if not isinstance(value, dict):
+		raise ConfigLoadError(f'Config value "{key}" must be an object of usage records.')
+
+	counts: UsageCounts = {}
+	for count_key, record in value.items():
+		if not isinstance(count_key, str):
+			raise ConfigLoadError(f'Config value "{key}" must be an object of usage records.')
+		if isinstance(record, int) and record >= 0:
+			counts[count_key] = {"name": "", "count": record}
+			continue
+		if not isinstance(record, dict):
+			raise ConfigLoadError(f'Config value "{key}" must be an object of usage records.')
+		name: Any = record.get("name", "")
+		count: Any = record.get("count")
+		if not isinstance(name, str) or not isinstance(count, int) or count < 0:
+			raise ConfigLoadError(f'Config value "{key}" must use records with string name and non-negative integer count.')
+		counts[count_key] = {"name": name, "count": count}
+
+	return counts

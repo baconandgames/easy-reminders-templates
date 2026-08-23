@@ -118,8 +118,10 @@ These have intentionally been postponed.
 - Pantry inventory
 - Store departments
 - Multiple template databases
+- Configurable picker sort order
 - Native macOS application
 - Cloud synchronization
+- Shared template folders
 
 ---
 
@@ -275,6 +277,21 @@ before adding another large UI pass. The current file now owns screen flow,
 styling, update handling, template actions, and shell helpers, so smaller modules
 would make future screen work easier to review and test.
 
+Future picker improvement:
+
+- Add a config setting for template and Reminders-list picker sort order.
+  Candidate modes:
+  - A-Z
+  - Z-A
+  - most frequently used
+  - item count ascending
+  - item count descending
+- Keep the first implementation explicit and predictable. Template frequency
+  needs local usage tracking before it can be reliable. Reminders list item
+  counts already exist in the list-target data, but template item counts should
+  be derived from named items only so blank placeholder rows do not affect
+  ordering.
+
 ### Template Storage Model
 
 Templates now use one JSON file per template.
@@ -306,6 +323,20 @@ Reasons for this direction:
 Each template file should include a `schema_version`. Future migrations should
 back up the file before writing changes. If one migration fails, the app should
 report that template and continue loading the rest when possible.
+
+Future sharing improvement:
+
+- Add support for one or more additional template source folders, configured in
+  `config.json`.
+- This would allow a user to point ListKit at a shared iCloud Drive, Google
+  Drive, Dropbox, or similar synced folder without making ListKit responsible for
+  cloud sync itself.
+- Load order should be deterministic: bundled defaults, app-owned user
+  templates, then configured shared folders. If two templates resolve to the same
+  template ID, report the conflict clearly instead of silently overriding.
+- Treat shared folders as read-only at first. Template creation and edits should
+  continue writing to the app-owned user templates folder until explicit shared
+  editing behavior is designed.
 
 ### Generic Template Schema
 

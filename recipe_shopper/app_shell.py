@@ -76,6 +76,25 @@ COLOR_SETTING_LABELS: dict[str, str] = {
 	"selection_color": "Selection Color",
 	"omitted_ingredient_color": "Omitted Ingredient Color",
 }
+SORT_ORDER_LABELS: dict[str, str] = {
+	"name_asc": "A-Z",
+	"name_desc": "Z-A",
+	"most_frequently_used": "Most Frequently Used",
+	"item_count_asc": "Item Count Ascending",
+	"item_count_desc": "Item Count Descending",
+}
+TEMPLATE_SORT_ORDER_OPTIONS: tuple[str, ...] = (
+	"name_asc",
+	"name_desc",
+	"most_frequently_used",
+)
+REMINDERS_LIST_SORT_ORDER_OPTIONS: tuple[str, ...] = (
+	"name_asc",
+	"name_desc",
+	"most_frequently_used",
+	"item_count_asc",
+	"item_count_desc",
+)
 LISTKIT_BANNER: str = """\
  _     _     _   _  ___ _   
 | |   (_)___| |_| |/ (_) |_ 
@@ -92,7 +111,7 @@ MAIN_MENU_INSTRUCTIONS: str = (
 
 class OptionItem(ListItem):
 	def __init__(self, label: str, value: object, selectable: bool = True, markup: bool = False) -> None:
-		super().__init__(Label(label, markup=markup))
+		super().__init__(Label(label, markup=markup), disabled=not selectable)
 		self.label_text = label
 		self.selectable = selectable
 		self.value = value
@@ -262,6 +281,7 @@ class ListKitApp(App[int]):
 		self.start_config = start_config
 		self.templates: TemplateMap = {}
 		self.template: dict[str, Any] | None = None
+		self.template_id: str = ""
 		self.batch_size: float | None = None
 		self.include_on_hand: bool = True
 		self.shopping_list: ShoppingList | None = None
@@ -346,8 +366,12 @@ class ListKitApp(App[int]):
 		)
 		self.set_footer("[↑↓ select | ENTER confirm | ESC back | Ctrl-C quit]")
 		options: list[tuple[str, object]] = [
-			(template["name"], template)
-			for _template_id, template in sorted(self.templates.items(), key=lambda entry: entry[1]["name"].casefold())
+			(template["name"], ("template", template_id))
+			for template_id, template in sort_templates(
+				self.templates,
+				self.config.template_sort_order,
+				self.config.template_usage_counts,
+			)
 		]
 		if len(options) == 0:
 			options.extend(
@@ -455,10 +479,10 @@ class ListKitApp(App[int]):
 			self.show_template_menu(f'Template "{short_name}" was not found. Choose a template below, or go back to the main menu.')
 			return
 
-		_template_id, template = match
-		self.start_template(template)
+		template_id, template = match
+		self.start_template(template, template_id)
 
-	def start_template(self, template: dict[str, Any]) -> None:
+	def start_template(self, template: dict[str, Any], template_id: str = "") -> None:
 		valid_template = template_with_valid_items(template)
 		if valid_template is None:
 			self.short_name = None
@@ -468,6 +492,7 @@ class ListKitApp(App[int]):
 			return
 
 		self.template = valid_template
+		self.template_id = template_id
 		self.batch_size = None
 		self.include_on_hand = True
 		self.shopping_list = None
@@ -567,7 +592,11 @@ class ListKitApp(App[int]):
 
 		options: list[tuple[str, object]] = [
 			(format_target_label(target, name_counts[target.name] > 1), target)
-			for target in sorted(visible_targets, key=lambda value: value.name.casefold())
+			for target in sort_reminders_targets(
+				visible_targets,
+				self.config.reminders_list_sort_order,
+				self.config.reminders_list_usage_counts,
+			)
 		]
 		options.append(("Create New List", "create_target"))
 		menu = self.build_list(options, default_value=self.config.apple_reminders_list_id or self.config.apple_reminders_list_name)
@@ -605,6 +634,9 @@ class ListKitApp(App[int]):
 		except DeliveryError as error:
 			self.show_error(str(error))
 			return
+		self.record_template_usage()
+		self.record_reminders_list_usage(self.delivery_target)
+		self.save_current_config()
 		self.show_result(result)
 
 	def show_result(self, result: DeliveryResult) -> None:
@@ -679,6 +711,8 @@ class ListKitApp(App[int]):
 		menu = self.build_list(
 			[
 				("Manage Lists", "config:lists"),
+				("Sort Order", "config:sort_order"),
+				("Usage History", "config:usage_history"),
 				("Colors", "config:colors"),
 				("Defaults", "config:defaults"),
 				(update_title, "config:updates"),
@@ -687,6 +721,160 @@ class ListKitApp(App[int]):
 		)
 		self.replace_body(menu)
 		menu.focus()
+
+	def show_config_sort_order_menu(self) -> None:
+		self.view_name = "config_sort_order"
+		self.set_header(
+			"Sort Order",
+			"Choose how templates and Reminders lists are ordered when ListKit shows a picker.",
+		)
+		self.set_footer("[↑↓ select | ENTER confirm | ESC back | Ctrl-C quit]")
+		menu = self.build_list(
+			[
+				(f"Templates: {format_sort_order_label(self.config.template_sort_order)}", "config:template_sort_order"),
+				(f"Reminders Lists: {format_sort_order_label(self.config.reminders_list_sort_order)}", "config:reminders_list_sort_order"),
+				("↩ Back", "config:sort_order_back"),
+			]
+		)
+		self.replace_body(menu)
+		menu.focus()
+
+	def show_config_sort_order_picker(self, setting_name: str) -> None:
+		self.view_name = f"config_sort:{setting_name}"
+		if setting_name == "template_sort_order":
+			self.set_header(
+				"Template Order",
+				"Choose how saved templates are ordered when selecting what to add.",
+			)
+		else:
+			self.set_header(
+				"Reminders List Order",
+				"Choose how Reminders lists are ordered when selecting a destination or choosing which lists are visible.",
+			)
+		self.set_footer("[↑↓ select | ENTER save | ESC back | Ctrl-C quit]")
+		current_value = getattr(self.config, setting_name)
+		sort_orders = (
+			TEMPLATE_SORT_ORDER_OPTIONS
+			if setting_name == "template_sort_order"
+			else REMINDERS_LIST_SORT_ORDER_OPTIONS
+		)
+		options = [
+			(format_sort_order_label(sort_order), f"config:set_sort:{setting_name}:{sort_order}")
+			for sort_order in sort_orders
+		]
+		options.append(("↩ Back", "config:sort_picker_back"))
+		menu = self.build_list(options, default_value=f"config:set_sort:{setting_name}:{current_value}")
+		self.replace_body(menu)
+		menu.focus()
+
+	def save_config_sort_order(self, setting_name: str, sort_order: str) -> None:
+		if setting_name == "template_sort_order":
+			self.config = replace(self.config, template_sort_order=sort_order)
+		elif setting_name == "reminders_list_sort_order":
+			self.config = replace(self.config, reminders_list_sort_order=sort_order)
+		self.save_current_config()
+		self.show_config_sort_order_menu()
+
+	def show_usage_history_menu(self) -> None:
+		self.view_name = "config_usage_history"
+		self.set_header(
+			"Usage History",
+			"Review or reset the local counts used by Most Frequently Used sort order.",
+		)
+		self.set_footer("[↑↓ select | ENTER confirm | ESC back | Ctrl-C quit]")
+		menu = self.build_list(
+			[
+				("Template Usage", "config:template_usage"),
+				("Reminders List Usage", "config:list_usage"),
+				("↩ Back", "config:usage_history_back"),
+			]
+		)
+		self.replace_body(menu)
+		menu.focus()
+
+	def show_template_usage_history(self) -> None:
+		self.view_name = "config_template_usage"
+		self.set_header(
+			"Template Usage",
+			"These local counts are used by Template Order: Most Frequently Used. To manually adjust values, open config.json.",
+		)
+		self.set_footer("[↑↓ select | ENTER confirm | ESC back | Ctrl-C quit]")
+		options: list[tuple[str, object] | tuple[str, object, bool]] = [
+			(label, "config:usage_heading", False)
+			for label in format_template_usage_rows(self.templates, self.config.template_usage_counts)
+		]
+		options.extend(
+			[
+				("", "config:usage_spacer", False),
+				("Open config.json", "config:open_config"),
+				("Reset All to Zero", "config:confirm_reset_template_usage"),
+				("↩ Back", "config:usage_picker_back"),
+			]
+		)
+		menu = self.build_list(options, default_value="config:open_config")
+		self.replace_body(menu)
+		menu.focus()
+
+	def show_list_usage_history(self) -> None:
+		self.view_name = "config_list_usage"
+		self.set_header(
+			"Reminders List Usage",
+			"These local counts are used by Reminders List Order: Most Frequently Used. To manually adjust values, open config.json.",
+		)
+		self.set_footer("[↑↓ select | ENTER confirm | ESC back | Ctrl-C quit]")
+		try:
+			targets = AppleRemindersTarget().list_targets()
+		except DeliveryError as error:
+			self.show_error(str(error))
+			return
+		options: list[tuple[str, object] | tuple[str, object, bool]] = [
+			(label, "config:usage_heading", False)
+			for label in format_reminders_list_usage_rows(targets, self.config.reminders_list_usage_counts)
+		]
+		options.extend(
+			[
+				("", "config:usage_spacer", False),
+				("Open config.json", "config:open_config"),
+				("Reset All to Zero", "config:confirm_reset_list_usage"),
+				("↩ Back", "config:usage_picker_back"),
+			]
+		)
+		menu = self.build_list(options, default_value="config:open_config")
+		self.replace_body(menu)
+		menu.focus()
+
+	def show_reset_usage_confirmation(self, usage_kind: str) -> None:
+		self.view_name = f"config_confirm_reset:{usage_kind}"
+		title = "Reset Template Usage?" if usage_kind == "template" else "Reset Reminders List Usage?"
+		self.set_header(
+			title,
+			"This clears local usage counts only. It does not change templates or Reminders lists. To manually adjust values, open config.json.",
+		)
+		self.set_footer("[↑↓ select | ENTER confirm | ESC back | Ctrl-C quit]")
+		menu = self.build_list(
+			[
+				("Confirm Reset", f"config:reset_usage:{usage_kind}"),
+				("Cancel", f"config:reset_usage_back:{usage_kind}"),
+			]
+		)
+		self.replace_body(menu)
+		menu.focus()
+
+	def reset_usage_history(self, usage_kind: str) -> None:
+		if usage_kind == "template":
+			self.config = replace(self.config, template_usage_counts={})
+			self.save_current_config()
+			self.show_template_usage_history()
+		else:
+			self.config = replace(self.config, reminders_list_usage_counts={})
+			self.save_current_config()
+			self.show_list_usage_history()
+
+	def return_from_reset_usage_confirmation(self, usage_kind: str) -> None:
+		if usage_kind == "template":
+			self.show_template_usage_history()
+		else:
+			self.show_list_usage_history()
 
 	def show_config_list_visibility(self) -> None:
 		self.view_name = "config_lists"
@@ -714,7 +902,11 @@ class ListKitApp(App[int]):
 			name_counts[target.name] = name_counts.get(target.name, 0) + 1
 		options = [
 			(self.format_config_list_option(target, name_counts[target.name] > 1), ("config_list", target.identifier))
-			for target in sorted(self.config_list_targets, key=lambda value: value.name.casefold())
+			for target in sort_reminders_targets(
+				self.config_list_targets,
+				self.config.reminders_list_sort_order,
+				self.config.reminders_list_usage_counts,
+			)
 		]
 		menu = self.build_list(options, list_type=ConfigListVisibilityView)
 		self.replace_body(menu)
@@ -798,7 +990,11 @@ class ListKitApp(App[int]):
 			name_counts[target.name] = name_counts.get(target.name, 0) + 1
 		options = [
 			(format_target_label(target, name_counts[target.name] > 1), target)
-			for target in sorted(visible_targets, key=lambda value: value.name.casefold())
+			for target in sort_reminders_targets(
+				visible_targets,
+				self.config.reminders_list_sort_order,
+				self.config.reminders_list_usage_counts,
+			)
 		]
 		menu = self.build_list(options, default_value=self.config.apple_reminders_list_id or self.config.apple_reminders_list_name)
 		self.replace_body(menu)
@@ -940,6 +1136,32 @@ class ListKitApp(App[int]):
 	def handle_config_action(self, value: str) -> None:
 		if value == "config:lists":
 			self.show_config_list_visibility()
+		elif value == "config:sort_order":
+			self.show_config_sort_order_menu()
+		elif value == "config:sort_order_back":
+			self.show_config_menu()
+		elif value == "config:sort_picker_back":
+			self.show_config_sort_order_menu()
+		elif value == "config:usage_history":
+			self.show_usage_history_menu()
+		elif value == "config:usage_history_back":
+			self.show_config_menu()
+		elif value == "config:template_usage":
+			self.show_template_usage_history()
+		elif value == "config:list_usage":
+			self.show_list_usage_history()
+		elif value == "config:usage_picker_back":
+			self.show_usage_history_menu()
+		elif value == "config:confirm_reset_template_usage":
+			self.show_reset_usage_confirmation("template")
+		elif value == "config:confirm_reset_list_usage":
+			self.show_reset_usage_confirmation("list")
+		elif value.startswith("config:reset_usage_back:"):
+			self.return_from_reset_usage_confirmation(value.rsplit(":", 1)[1])
+		elif value.startswith("config:reset_usage:"):
+			self.reset_usage_history(value.rsplit(":", 1)[1])
+		elif value == "config:open_config":
+			self.open_config_file()
 		elif value == "config:colors":
 			self.show_config_colors_menu()
 		elif value == "config:defaults":
@@ -959,6 +1181,11 @@ class ListKitApp(App[int]):
 			self.show_config_bool_option("include_on_hand_default")
 		elif value == "config:append_short_name":
 			self.show_config_bool_option("append_short_name")
+		elif value in {"config:template_sort_order", "config:reminders_list_sort_order"}:
+			self.show_config_sort_order_picker(value.removeprefix("config:"))
+		elif value.startswith("config:set_sort:"):
+			_parts = value.split(":")
+			self.save_config_sort_order(_parts[2], _parts[3])
 		elif value.startswith("config:color:"):
 			self.show_config_color_picker(value.rsplit(":", 1)[1])
 		elif value.startswith("config:set_color:"):
@@ -973,6 +1200,27 @@ class ListKitApp(App[int]):
 	def save_current_config(self) -> None:
 		if self.config_path is not None:
 			save_config(self.config_path, self.config)
+
+	def record_template_usage(self) -> None:
+		if self.template_id == "":
+			return
+		usage_counts = dict(self.config.template_usage_counts)
+		template_name = self.template["name"] if self.template is not None else self.template_id
+		usage_counts[self.template_id] = {
+			"name": str(template_name),
+			"count": usage_record_count(usage_counts.get(self.template_id)) + 1,
+		}
+		self.config = replace(self.config, template_usage_counts=usage_counts)
+
+	def record_reminders_list_usage(self, target: DeliveryTargetOption) -> None:
+		if target.identifier == "":
+			return
+		usage_counts = dict(self.config.reminders_list_usage_counts)
+		usage_counts[target.identifier] = {
+			"name": target.name,
+			"count": usage_record_count(usage_counts.get(target.identifier)) + 1,
+		}
+		self.config = replace(self.config, reminders_list_usage_counts=usage_counts)
 
 	def open_templates_folder(self) -> None:
 		self.ensure_template_folders()
@@ -989,6 +1237,18 @@ class ListKitApp(App[int]):
 			return
 		webbrowser.open(docs_path.as_uri())
 		self.query_one("#context", Static).update("Opened TEMPLATES.md.")
+
+	def open_config_file(self) -> None:
+		if self.config_path is None:
+			self.query_one("#context", Static).update("Config file path is unavailable.")
+			return
+		if not self.config_path.exists():
+			save_config(self.config_path, self.config)
+		try:
+			subprocess.run(["open", str(self.config_path)], check=True)
+		except (OSError, subprocess.CalledProcessError):
+			webbrowser.open(self.config_path.as_uri())
+		self.query_one("#context", Static).update("Opened config.json.")
 
 	def ensure_template_folders(self) -> None:
 		self.templates_path.mkdir(parents=True, exist_ok=True)
@@ -1040,6 +1300,11 @@ class ListKitApp(App[int]):
 					list_view.index = index
 					self.call_after_refresh(self.restore_list_index, list_view, index)
 					break
+		if list_view.index is None or not items[list_view.index].selectable:
+			for index, item in enumerate(items):
+				if item.selectable and item.label_text.strip():
+					list_view.index = index
+					break
 		return list_view
 
 	def restore_list_index(self, list_view: ListView, index: int) -> None:
@@ -1055,6 +1320,8 @@ class ListKitApp(App[int]):
 	def on_list_view_selected(self, event: ListView.Selected) -> None:
 		item = event.item
 		if not isinstance(item, OptionItem):
+			return
+		if not item.selectable:
 			return
 		value = item.value
 		if isinstance(value, tuple) and value[0] == "toggle_item" and isinstance(value[1], int):
@@ -1090,6 +1357,10 @@ class ListKitApp(App[int]):
 				self.create_reminders()
 		elif isinstance(value, tuple) and value[0] == "template_source" and isinstance(value[1], DeliveryTargetOption):
 			self.submit_template_source(value[1])
+		elif isinstance(value, tuple) and value[0] == "template" and isinstance(value[1], str):
+			template = self.templates.get(value[1])
+			if template is not None:
+				self.start_template(template, value[1])
 		elif isinstance(value, dict):
 			self.start_template(value)
 		elif isinstance(value, bool):
@@ -1188,8 +1459,16 @@ class ListKitApp(App[int]):
 				self.exit(0)
 			else:
 				self.show_main_menu()
-		elif self.view_name in {"config_lists", "config_colors", "config_defaults", "config_updates"}:
+		elif self.view_name in {"config_lists", "config_sort_order", "config_usage_history", "config_colors", "config_defaults", "config_updates"}:
 			self.show_config_menu()
+		elif self.view_name.startswith("config_sort:"):
+			self.show_config_sort_order_menu()
+		elif self.view_name in {"config_template_usage", "config_list_usage"}:
+			self.show_usage_history_menu()
+		elif self.view_name == "config_confirm_reset:template":
+			self.show_template_usage_history()
+		elif self.view_name == "config_confirm_reset:list":
+			self.show_list_usage_history()
 		elif self.view_name == "config_default_list":
 			self.show_config_defaults_menu()
 		elif self.view_name.startswith("config_bool:"):
@@ -1266,6 +1545,115 @@ def format_target_label(target: DeliveryTargetOption, show_detail: bool) -> str:
 
 def truncate_sample_item(item: str) -> str:
 	return item if len(item) <= 11 else f"{item[:11]}..."
+
+
+def sort_templates(
+	templates: TemplateMap,
+	sort_order: str,
+	usage_counts: dict[str, object] | None = None,
+) -> list[tuple[str, dict[str, Any]]]:
+	items = list(templates.items())
+	usage_counts = usage_counts or {}
+	if sort_order == "name_desc":
+		return sorted(items, key=lambda entry: entry[1]["name"].casefold(), reverse=True)
+	if sort_order == "most_frequently_used":
+		return sorted(items, key=lambda entry: (-usage_record_count(usage_counts.get(entry[0])), entry[1]["name"].casefold()))
+	return sorted(items, key=lambda entry: entry[1]["name"].casefold())
+
+
+def sort_reminders_targets(
+	targets: list[DeliveryTargetOption],
+	sort_order: str,
+	usage_counts: dict[str, object] | None = None,
+) -> list[DeliveryTargetOption]:
+	usage_counts = usage_counts or {}
+	if sort_order == "name_desc":
+		return sorted(targets, key=lambda target: target.name.casefold(), reverse=True)
+	if sort_order == "most_frequently_used":
+		return sorted(targets, key=lambda target: (-usage_record_count(usage_counts.get(target.identifier)), target.name.casefold()))
+	if sort_order == "item_count_asc":
+		return sorted(targets, key=lambda target: (target.item_count, target.name.casefold()))
+	if sort_order == "item_count_desc":
+		return sorted(targets, key=lambda target: (-target.item_count, target.name.casefold()))
+	return sorted(targets, key=lambda target: target.name.casefold())
+
+
+def template_item_count(template: dict[str, Any]) -> int:
+	items = template.get("ingredients", template.get("items", []))
+	if not isinstance(items, list):
+		return 0
+	return sum(
+		1
+		for item in items
+		if isinstance(item, dict) and isinstance(item.get("name"), str) and item["name"].strip() != ""
+	)
+
+
+def format_sort_order_label(sort_order: str) -> str:
+	return SORT_ORDER_LABELS.get(sort_order, SORT_ORDER_LABELS["name_asc"])
+
+
+def format_template_usage_rows(templates: TemplateMap, usage_counts: dict[str, object]) -> list[str]:
+	rows: list[tuple[str, int]] = [
+		(template["name"], usage_record_count(usage_counts.get(template_id)))
+		for template_id, template in templates.items()
+	]
+	rows.extend(
+		(format_missing_usage_label("Missing template", template_id, record), usage_record_count(record))
+		for template_id, record in usage_counts.items()
+		if template_id not in templates and usage_record_count(record) > 0
+	)
+	return format_usage_rows(rows)
+
+
+def format_reminders_list_usage_rows(
+	targets: list[DeliveryTargetOption],
+	usage_counts: dict[str, object],
+) -> list[str]:
+	target_names = {target.identifier: target.name for target in targets}
+	rows: list[tuple[str, int]] = [
+		(target.name, usage_record_count(usage_counts.get(target.identifier)))
+		for target in targets
+	]
+	rows.extend(
+		(format_missing_usage_label("Missing list", target_id, record), usage_record_count(record))
+		for target_id, record in usage_counts.items()
+		if target_id not in target_names and usage_record_count(record) > 0
+	)
+	return format_usage_rows(rows)
+
+
+def format_usage_rows(rows: list[tuple[str, int]]) -> list[str]:
+	return [
+		"-" * 36,
+		*[
+			f"{label}: {count}"
+			for label, count in sorted(rows, key=lambda row: (-row[1], row[0].casefold()))
+		],
+	]
+
+
+def usage_record_count(record: object) -> int:
+	if isinstance(record, int):
+		return record if record >= 0 else 0
+	if isinstance(record, dict):
+		count = record.get("count")
+		return count if isinstance(count, int) and count >= 0 else 0
+	return 0
+
+
+def usage_record_name(record: object) -> str:
+	if not isinstance(record, dict):
+		return ""
+	name = record.get("name", "")
+	return name if isinstance(name, str) else ""
+
+
+def format_missing_usage_label(prefix: str, identifier: str, record: object) -> str:
+	name = usage_record_name(record)
+	if name == "":
+		return f"{prefix}: {identifier}"
+	return f"{prefix}: {name} ({identifier})"
 
 
 def order_items_with_on_hand_last(items: list[ShoppingListItem]) -> list[tuple[int, ShoppingListItem]]:
