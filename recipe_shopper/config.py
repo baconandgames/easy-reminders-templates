@@ -46,6 +46,7 @@ class Config:
 	reminders_list_sort_order: str = "name_asc"
 	template_usage_counts: UsageCounts = field(default_factory=dict)
 	reminders_list_usage_counts: UsageCounts = field(default_factory=dict)
+	external_templates_path: str = ""
 
 
 class ConfigLoadError(Exception):
@@ -108,6 +109,11 @@ def load_config(path: Path) -> Config:
 	)
 	template_usage_counts: UsageCounts = _read_usage_counts(raw_data, "template_usage_counts")
 	reminders_list_usage_counts: UsageCounts = _read_usage_counts(raw_data, "reminders_list_usage_counts")
+	external_templates_path: str = _read_optional_string(
+		raw_data,
+		"external_templates_path",
+		Config.external_templates_path,
+	)
 
 	return Config(
 		apple_reminders_list_id=apple_reminders_list_id,
@@ -124,6 +130,7 @@ def load_config(path: Path) -> Config:
 		reminders_list_sort_order=reminders_list_sort_order,
 		template_usage_counts=template_usage_counts,
 		reminders_list_usage_counts=reminders_list_usage_counts,
+		external_templates_path=external_templates_path,
 	)
 
 
@@ -143,6 +150,7 @@ def save_config(path: Path, config: Config) -> None:
 		"reminders_list_sort_order": config.reminders_list_sort_order,
 		"template_usage_counts": config.template_usage_counts,
 		"reminders_list_usage_counts": config.reminders_list_usage_counts,
+		"external_templates_path": config.external_templates_path,
 	}
 	path.write_text(f"{json.dumps(data, indent=2)}\n", encoding="utf-8")
 

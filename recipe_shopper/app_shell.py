@@ -28,7 +28,8 @@ from recipe_shopper.formatter import (
 from recipe_shopper.templates import (
 	TemplateLoadError,
 	TemplateMap,
-	find_template_by_short_name,
+	find_templates_by_short_name,
+	load_valid_templates_from_directory,
 	load_templates,
 	template_has_on_hand_items,
 	template_uses_batch_size,
@@ -110,6 +111,12 @@ MAIN_MENU_INSTRUCTIONS: str = (
 	"ListKit helps you turn recipes, packing lists, regular shopping trips, and other repeatable tasks into reusable "
 	"templates. Choose Add from Template to start from an example or make your own template from an existing Apple "
 	"Reminders list."
+)
+SHARED_TEMPLATE_PREFIX: str = "external:"
+SHARED_TEMPLATE_LABEL_SUFFIX: str = "(shared)"
+SHARING_INSTRUCTIONS: str = (
+	"Link one folder from iCloud Drive, Dropbox, Google Drive, or another folder on this Mac. "
+	"This can be used to share templates that might be used by everyone in your family, such as recipes or packing lists."
 )
 
 
@@ -286,6 +293,7 @@ class ListKitApp(App[int]):
 		self.start_config = start_config
 		self.check_updates_on_launch = check_updates_on_launch
 		self.templates: TemplateMap = {}
+		self.template_load_warning: str = ""
 		self.template: dict[str, Any] | None = None
 		self.template_id: str = ""
 		self.batch_size: float | None = None
@@ -309,6 +317,7 @@ class ListKitApp(App[int]):
 		self.template_source_target: DeliveryTargetOption | None = None
 		self.template_item_names: list[str] = []
 		self.template_name: str = ""
+		self.template_short_name: str = ""
 
 	def compose(self) -> ComposeResult:
 		with Container(id="shell"):
@@ -321,12 +330,16 @@ class ListKitApp(App[int]):
 	def on_mount(self) -> None:
 		self.title = "ListKit"
 		try:
-			self.templates = load_templates(self.templates_path)
+			self.templates, self.template_load_warning = load_app_templates(
+				self.templates_path,
+				self.config.external_templates_path,
+			)
 		except TemplateLoadError as error:
 			if not is_empty_templates_error(error):
 				self.show_error(str(error))
 				return
 			self.templates = {}
+			self.template_load_warning = ""
 			self.ensure_template_folders()
 
 		if self.start_config:
@@ -380,21 +393,29 @@ class ListKitApp(App[int]):
 	def show_template_menu(self, warning: str = "") -> None:
 		self.view_name = "template"
 		try:
-			self.templates = load_templates(self.templates_path)
+			self.templates, self.template_load_warning = load_app_templates(
+				self.templates_path,
+				self.config.external_templates_path,
+			)
 		except TemplateLoadError as error:
 			if not is_empty_templates_error(error):
 				self.show_error(str(error))
 				return
 			self.templates = {}
+			self.template_load_warning = ""
 			warning = "No templates found. Create one from a Reminders list or open the templates folder."
 			self.ensure_template_folders()
+		if len(self.templates) == 0 and warning == "" and self.template_load_warning == "":
+			warning = "No templates found. Create one from a Reminders list or open the templates folder."
+			self.ensure_template_folders()
+		context = format_template_menu_context(warning, self.template_load_warning, self.templates)
 		self.set_header(
 			"Select Template",
-			warning or "Choose a saved template. ListKit will let you review and edit the items before adding them to Reminders.",
+			context,
 		)
 		self.set_footer("[↑↓ select | ENTER confirm | ESC back | Ctrl-C quit]")
 		options: list[tuple[str, object]] = [
-			(template["name"], ("template", template_id))
+			(format_template_picker_label(template_id, template), ("template", template_id))
 			for template_id, template in sort_templates(
 				self.templates,
 				self.config.template_sort_order,
@@ -482,33 +503,93 @@ class ListKitApp(App[int]):
 			self.show_template_short_name_screen()
 			self.query_one("#context", Static).update("Short name cannot be blank.")
 			return
+		self.template_short_name = short_name
+		if self.config.external_templates_path.strip() != "":
+			self.show_template_storage_screen()
+			return
+		self.create_template_from_list(self.templates_path)
+
+	def show_template_storage_screen(self) -> None:
+		self.view_name = "template_storage"
+		shared_path = Path(self.config.external_templates_path).expanduser()
+		shared_available = shared_path.exists() and shared_path.is_dir()
+		self.set_header(
+			"Template Location",
+			"Choose where to save this template. Local templates stay on this Mac; shared templates are saved to the configured shared folder.",
+		)
+		self.set_footer("[↑↓ select | ENTER confirm | ESC back | Ctrl-C quit]")
+		options: list[tuple[str, object] | tuple[str, object, bool]] = [
+			("Local Templates Folder", ("template_storage", "local")),
+			("Shared Templates Folder", ("template_storage", "shared"), shared_available),
+			("↩ Back", "back"),
+		]
+		menu = self.build_list(options)
+		self.replace_body(menu)
+		menu.focus()
+
+	def create_template_from_list(self, templates_path: Path) -> None:
 		template_path = write_template_from_reminders_list(
-			self.templates_path,
+			templates_path,
 			self.template_name,
-			short_name,
+			self.template_short_name,
 			self.template_item_names,
 		)
 		try:
-			self.templates = load_templates(self.templates_path)
+			self.templates, self.template_load_warning = load_app_templates(
+				self.templates_path,
+				self.config.external_templates_path,
+			)
 		except TemplateLoadError as error:
 			self.show_error(str(error))
 			return
 		self.show_created_template_result(template_path)
 
+	def save_template_to_storage(self, storage: str) -> None:
+		if storage == "shared":
+			shared_path = Path(self.config.external_templates_path).expanduser()
+			if not shared_path.exists() or not shared_path.is_dir():
+				self.show_template_storage_screen()
+				self.query_one("#context", Static).update("Shared folder is unavailable. Choose local storage or update sharing settings.")
+				return
+			self.create_template_from_list(shared_path)
+			return
+		self.create_template_from_list(self.templates_path)
+
 	def start_short_name_flow(self, short_name: str) -> None:
-		try:
-			match = find_template_by_short_name(self.templates, short_name)
-		except TemplateLoadError as error:
-			self.show_error(str(error))
+		matches = find_templates_by_short_name(self.templates, short_name)
+		if len(matches) > 1:
+			self.show_short_name_disambiguation(short_name, matches)
 			return
 
-		if match is None:
+		if len(matches) == 0:
 			self.short_name = None
-			self.show_template_menu(f'Template "{short_name}" was not found. Choose a template below, or go back to the main menu.')
+			if self.config.external_templates_path.strip() == "":
+				self.show_template_menu(f'Template "{short_name}" was not found. Choose a template below, or go back to the main menu.')
+			else:
+				self.show_template_menu(
+					f'Template "{short_name}" was not found. It may have been removed or renamed in your local or shared templates.'
+				)
 			return
 
+		match = matches[0]
 		template_id, template = match
 		self.start_template(template, template_id)
+
+	def show_short_name_disambiguation(self, short_name: str, matches: list[tuple[str, dict[str, Any]]]) -> None:
+		self.view_name = "template_short_name_disambiguation"
+		self.set_header(
+			"Choose Template",
+			f'Multiple templates use "{short_name}". Choose one.',
+		)
+		self.set_footer("[↑↓ select | ENTER confirm | ESC back | Ctrl-C quit]")
+		options: list[tuple[str, object]] = [
+			(format_template_picker_label(template_id, template), ("template", template_id))
+			for template_id, template in matches
+		]
+		options.append(("↩ Back", "back"))
+		menu = self.build_list(options)
+		self.replace_body(menu)
+		menu.focus()
 
 	def start_template(self, template: dict[str, Any], template_id: str = "") -> None:
 		valid_template = template_with_valid_items(template)
@@ -708,13 +789,16 @@ class ListKitApp(App[int]):
 			"Create reusable templates from Reminders lists, then add selected items back to Reminders whenever you need them.",
 		)
 		self.set_footer("[↑↓ select | ENTER confirm | ESC back | Ctrl-C quit]")
-		menu = self.build_list(
+		options: list[tuple[str, object]] = [("Open Templates Folder", "help:open_templates")]
+		if self.config.external_templates_path.strip() != "":
+			options.append(("Open Shared Templates Folder", "help:open_shared_templates"))
+		options.extend(
 			[
-				("Open Templates Folder", "help:open_templates"),
 				("Open Documentation", "help:open_docs"),
 				("↩ Back", "back"),
 			]
 		)
+		menu = self.build_list(options)
 		self.replace_body(
 			Static(
 				"[bold]Short Names[/]\n"
@@ -744,11 +828,115 @@ class ListKitApp(App[int]):
 				("Colors", "config:colors"),
 				("Defaults", "config:defaults"),
 				(update_title, "config:updates"),
+				("Manage Sharing (Experimental)", "config:sharing"),
 				("↩ Back", "config:return"),
 			]
 		)
 		self.replace_body(menu)
 		menu.focus()
+
+	def show_sharing_menu(self) -> None:
+		self.view_name = "config_sharing"
+		current_path = self.config.external_templates_path.strip()
+		current_label = format_shared_folder_label(current_path)
+		self.set_header("Template Sharing (Experimental)", SHARING_INSTRUCTIONS)
+		self.set_footer("[↑↓ select | ENTER confirm | ESC back | Ctrl-C quit]")
+		options: list[tuple[str, object] | tuple[str, object, bool]] = [
+			(f"Current Shared Folder: {current_label}", "config:sharing_current", False),
+			("", "config:sharing_spacer", False),
+		]
+		if current_path == "":
+			options.append(("Choose Shared Folder", "config:sharing_choose"))
+		else:
+			options.extend(
+				[
+					("Change Shared Folder", "config:sharing_choose"),
+					("Remove Shared Folder", "config:sharing_remove"),
+					("Open Shared Folder", "config:sharing_open_shared"),
+				]
+			)
+		options.extend(
+			[
+				("Open Local Templates Folder", "config:sharing_open_local"),
+				("↩ Back", "config:sharing_back"),
+			]
+		)
+		menu = self.build_list(options)
+		self.replace_body(menu)
+		menu.focus()
+
+	def show_shared_folder_path_screen(self) -> None:
+		self.view_name = "config_sharing_path"
+		self.set_header(
+			"Shared Folder Path",
+			"Paste the folder path to read shared templates from. Leave it blank to return without changes.",
+		)
+		self.set_footer("[ENTER save | ESC back | Ctrl-C quit]")
+		self.replace_body(
+			Input(
+				value=self.config.external_templates_path,
+				placeholder="~/Library/Mobile Documents/.../ListKit Templates",
+				id="shared-folder-input",
+			)
+		)
+		self.query_one("#shared-folder-input", Input).focus()
+
+	def choose_shared_folder(self) -> None:
+		result = choose_folder_with_dialog()
+		if result is None:
+			self.show_sharing_menu()
+			self.query_one("#context", Static).update("No shared folder selected.")
+			return
+		if result == "":
+			self.show_shared_folder_path_screen()
+			self.query_one("#context", Static).update("Folder picker unavailable. Paste the shared folder path.")
+			return
+		self.save_shared_folder_path(result)
+
+	def save_shared_folder_path(self, value: str) -> None:
+		raw_path = value.strip()
+		if raw_path == "":
+			self.show_sharing_menu()
+			return
+		expanded_path = Path(raw_path).expanduser()
+		if not expanded_path.exists() or not expanded_path.is_dir():
+			self.show_shared_folder_path_screen()
+			self.query_one("#context", Static).update("Shared folder must be an existing folder.")
+			return
+		self.config = replace(self.config, external_templates_path=str(expanded_path))
+		self.save_current_config()
+		self.reload_templates_for_config()
+		self.show_sharing_menu()
+
+	def remove_shared_folder(self) -> None:
+		self.config = replace(self.config, external_templates_path="")
+		self.save_current_config()
+		self.reload_templates_for_config()
+		self.show_sharing_menu()
+
+	def open_shared_folder(self) -> None:
+		shared_path = Path(self.config.external_templates_path).expanduser()
+		if self.config.external_templates_path.strip() == "" or not shared_path.exists() or not shared_path.is_dir():
+			self.query_one("#context", Static).update("Shared folder is unavailable.")
+			return
+		try:
+			subprocess.run(["open", str(shared_path)], check=True)
+		except (OSError, subprocess.CalledProcessError):
+			webbrowser.open(shared_path.as_uri())
+		self.query_one("#context", Static).update("Opened shared folder.")
+
+	def reload_templates_for_config(self) -> None:
+		try:
+			self.templates, self.template_load_warning = load_app_templates(
+				self.templates_path,
+				self.config.external_templates_path,
+			)
+		except TemplateLoadError as error:
+			if not is_empty_templates_error(error):
+				self.template_load_warning = str(error)
+				return
+			self.templates = {}
+			self.template_load_warning = ""
 
 	def show_config_sort_order_menu(self) -> None:
 		self.view_name = "config_sort_order"
@@ -1269,6 +1457,18 @@ class ListKitApp(App[int]):
 			self.show_config_sort_order_menu()
 		elif value == "config:usage_history":
 			self.show_usage_history_menu()
+		elif value == "config:sharing":
+			self.show_sharing_menu()
+		elif value == "config:sharing_back":
+			self.show_config_menu()
+		elif value == "config:sharing_choose":
+			self.choose_shared_folder()
+		elif value == "config:sharing_remove":
+			self.remove_shared_folder()
+		elif value == "config:sharing_open_shared":
+			self.open_shared_folder()
+		elif value == "config:sharing_open_local":
+			self.open_templates_folder()
 		elif value == "config:usage_history_back":
 			self.show_config_menu()
 		elif value == "config:template_usage":
@@ -1483,6 +1683,8 @@ class ListKitApp(App[int]):
 			self.show_help()
 		elif value == "help:open_templates":
 			self.open_templates_folder()
+		elif value == "help:open_shared_templates":
+			self.open_shared_folder()
 		elif value == "help:open_docs":
 			self.open_documentation()
 		elif value == "create_target":
@@ -1495,6 +1697,8 @@ class ListKitApp(App[int]):
 				self.create_reminders()
 		elif isinstance(value, tuple) and value[0] == "template_source" and isinstance(value[1], DeliveryTargetOption):
 			self.submit_template_source(value[1])
+		elif isinstance(value, tuple) and value[0] == "template_storage" and isinstance(value[1], str):
+			self.save_template_to_storage(value[1])
 		elif isinstance(value, tuple) and value[0] == "template" and isinstance(value[1], str):
 			template = self.templates.get(value[1])
 			if template is not None:
@@ -1562,6 +1766,8 @@ class ListKitApp(App[int]):
 			self.submit_template_name(event.value)
 		elif event.input.id == "template-short-name-input":
 			self.submit_template_short_name(event.value)
+		elif event.input.id == "shared-folder-input":
+			self.save_shared_folder_path(event.value)
 
 	def submit_batch(self, value: str) -> None:
 		try:
@@ -1600,6 +1806,7 @@ class ListKitApp(App[int]):
 			"config_lists",
 			"config_sort_order",
 			"config_usage_history",
+			"config_sharing",
 			"config_colors",
 			"config_defaults",
 			"config_updates",
@@ -1620,14 +1827,20 @@ class ListKitApp(App[int]):
 			self.show_config_defaults_menu()
 		elif self.view_name == "config_color_picker":
 			self.show_config_colors_menu()
+		elif self.view_name == "config_sharing_path":
+			self.show_sharing_menu()
 		elif self.view_name == "template":
 			self.show_main_menu()
+		elif self.view_name == "template_short_name_disambiguation":
+			self.show_template_menu() if self.short_name is None else self.exit(130)
 		elif self.view_name == "template_source":
 			self.show_main_menu()
 		elif self.view_name == "template_name":
 			self.show_create_template_source_screen()
 		elif self.view_name == "template_short_name":
 			self.show_template_name_screen()
+		elif self.view_name == "template_storage":
+			self.show_template_short_name_screen()
 		elif self.view_name == "batch":
 			self.show_template_menu() if self.short_name is None else self.exit(130)
 		elif self.view_name == "on_hand":
@@ -1876,6 +2089,107 @@ def format_launch_update_label(status: UpdateStatus) -> str:
 def is_empty_templates_error(error: TemplateLoadError) -> bool:
 	message = str(error)
 	return message.startswith("Template path not found:") or message.startswith("No template JSON files found in:")
+
+
+def load_app_templates(local_path: Path, external_path: str) -> tuple[TemplateMap, str]:
+	templates: TemplateMap = {}
+
+	try:
+		templates.update(load_templates(local_path))
+	except TemplateLoadError as error:
+		if not is_empty_templates_error(error):
+			raise
+
+	shared_path_text = external_path.strip()
+	if shared_path_text == "":
+		return templates, ""
+
+	shared_path = Path(shared_path_text).expanduser()
+	if not shared_path.exists() or not shared_path.is_dir():
+		return templates, "Shared template folder is unavailable. Local templates are still available."
+
+	try:
+		shared_templates, shared_warnings = load_valid_templates_from_directory(shared_path)
+	except TemplateLoadError as error:
+		if is_empty_templates_error(error):
+			return templates, "Shared template folder has no JSON templates. Local templates are still available."
+		return templates, f"Shared template folder could not be loaded: {error}"
+
+	for template_id, template in shared_templates.items():
+		templates[format_external_template_id(template_id)] = template
+
+	if len(shared_warnings) > 0:
+		return templates, format_shared_template_warnings(shared_warnings)
+	return templates, ""
+
+
+def format_external_template_id(template_id: str) -> str:
+	return f"{SHARED_TEMPLATE_PREFIX}{template_id}"
+
+
+def format_shared_template_warnings(warnings: list[str]) -> str:
+	if len(warnings) == 1:
+		return f"Skipped 1 shared template file. {warnings[0]}"
+	return f"Skipped {len(warnings)} shared template files. Valid shared templates are still available."
+
+
+def is_external_template_id(template_id: str) -> bool:
+	return template_id.startswith(SHARED_TEMPLATE_PREFIX)
+
+
+def has_external_templates(templates: TemplateMap) -> bool:
+	return any(is_external_template_id(template_id) for template_id in templates)
+
+
+def format_template_picker_label(template_id: str, template: dict[str, Any]) -> str:
+	name = str(template["name"])
+	if is_external_template_id(template_id):
+		return f"{name} {SHARED_TEMPLATE_LABEL_SUFFIX}"
+	return name
+
+
+def format_template_menu_context(warning: str, load_warning: str, templates: TemplateMap) -> str:
+	context = warning or load_warning
+	if context == "":
+		context = "Choose a saved template. ListKit will let you review and edit the items before adding them to Reminders."
+	if has_external_templates(templates):
+		context = f"{context} {SHARED_TEMPLATE_LABEL_SUFFIX} marks templates from your shared folder."
+	return context
+
+
+def format_shared_folder_label(path_text: str) -> str:
+	if path_text == "":
+		return "None"
+	home = str(Path.home())
+	if path_text == home:
+		return "~"
+	if path_text.startswith(f"{home}/"):
+		return f"~/{path_text.removeprefix(f'{home}/')}"
+	return path_text
+
+
+def choose_folder_with_dialog(
+	runner=subprocess.run,
+) -> str | None:
+	try:
+		result = runner(
+			[
+				"osascript",
+				"-e",
+				'POSIX path of (choose folder with prompt "Choose a shared template folder")',
+			],
+			capture_output=True,
+			text=True,
+			check=False,
+		)
+	except OSError:
+		return ""
+
+	if result.returncode == 0:
+		return result.stdout.strip()
+	if "User canceled" in result.stderr:
+		return None
+	return ""
 
 
 def format_bool(value: bool) -> str:

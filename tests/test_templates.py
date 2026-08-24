@@ -7,6 +7,7 @@ import pytest
 from recipe_shopper.templates import (
 	TemplateLoadError,
 	find_template_by_short_name,
+	load_valid_templates_from_directory,
 	load_templates,
 	template_uses_batch_size,
 )
@@ -226,3 +227,112 @@ def test_load_templates_allows_blank_item_name_placeholder(tmp_path) -> None:
 	templates = load_templates(templates_dir)
 
 	assert templates["empty-list"]["ingredients"][0]["name"] == ""
+
+
+def test_load_valid_templates_from_directory_skips_invalid_json_and_non_json_files(tmp_path) -> None:
+	templates_dir: Path = tmp_path / "templates"
+	templates_dir.mkdir()
+	(templates_dir / "notes.txt").write_text("not a template", encoding="utf-8")
+	(templates_dir / "packing.json").write_text(
+		"""
+{
+  "schema_version": 1,
+  "type": "list",
+  "name": "Packing",
+  "short_name": "pack",
+  "items": [{"name": "Passport"}]
+}
+""",
+		encoding="utf-8",
+	)
+	(templates_dir / "broken.json").write_text("{", encoding="utf-8")
+	(templates_dir / "invalid-template.json").write_text(
+		"""
+{
+  "schema_version": 1,
+  "type": "note",
+  "name": "Invalid",
+  "items": [{"name": "Passport"}]
+}
+""",
+		encoding="utf-8",
+	)
+
+	templates, warnings = load_valid_templates_from_directory(templates_dir)
+
+	assert sorted(templates) == ["packing"]
+	assert len(warnings) == 2
+	assert any("Skipped broken.json" in warning for warning in warnings)
+	assert any("Skipped invalid-template.json" in warning for warning in warnings)
+
+
+def test_load_valid_templates_from_directory_skips_duplicate_ids(tmp_path) -> None:
+	templates_dir: Path = tmp_path / "templates"
+	recipes_dir: Path = templates_dir / "recipes"
+	lists_dir: Path = templates_dir / "lists"
+	recipes_dir.mkdir(parents=True)
+	lists_dir.mkdir()
+	(recipes_dir / "packing.json").write_text(
+		"""
+{
+  "schema_version": 1,
+  "type": "list",
+  "name": "Packing",
+  "short_name": "pack",
+  "items": [{"name": "Passport"}]
+}
+""",
+		encoding="utf-8",
+	)
+	(lists_dir / "packing.json").write_text(
+		"""
+{
+  "schema_version": 1,
+  "type": "list",
+  "name": "Duplicate Packing",
+  "short_name": "duplicate",
+  "items": [{"name": "Passport"}]
+}
+""",
+		encoding="utf-8",
+	)
+	templates, warnings = load_valid_templates_from_directory(templates_dir)
+
+	assert sorted(templates) == ["packing"]
+	assert len(warnings) == 1
+	assert any("duplicate template ID" in warning for warning in warnings)
+
+
+def test_load_valid_templates_from_directory_skips_duplicate_short_names(tmp_path) -> None:
+	templates_dir: Path = tmp_path / "templates"
+	templates_dir.mkdir()
+	(templates_dir / "packing.json").write_text(
+		"""
+{
+  "schema_version": 1,
+  "type": "list",
+  "name": "Packing",
+  "short_name": "pack",
+  "items": [{"name": "Passport"}]
+}
+""",
+		encoding="utf-8",
+	)
+	(templates_dir / "project.json").write_text(
+		"""
+{
+  "schema_version": 1,
+  "type": "list",
+  "name": "Project",
+  "short_name": "PACK",
+  "items": [{"name": "Create repo"}]
+}
+""",
+		encoding="utf-8",
+	)
+
+	templates, warnings = load_valid_templates_from_directory(templates_dir)
+
+	assert sorted(templates) == ["packing"]
+	assert len(warnings) == 1
+	assert any("duplicate short_name" in warning for warning in warnings)

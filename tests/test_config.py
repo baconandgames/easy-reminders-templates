@@ -25,13 +25,14 @@ def test_load_config_uses_defaults_when_file_is_missing() -> None:
 	assert config.reminders_list_sort_order == "name_asc"
 	assert config.template_usage_counts == {}
 	assert config.reminders_list_usage_counts == {}
+	assert config.external_templates_path == ""
 
 
 def test_load_config_reads_values() -> None:
 	with TemporaryDirectory() as directory:
 		path: Path = Path(directory) / "config.json"
 		path.write_text(
-			'{"target_app": "apple_reminders", "delivery_mode": "create", "apple_reminders_list_id": "abc123", "apple_reminders_list_name": "Shared Grocery", "hidden_apple_reminders_list_ids": ["list-1", "list-2"], "append_short_name": false, "include_on_hand_default": true, "standard_text_color": "white", "quantity_color": "#37B7F0", "selection_color": "red", "omitted_ingredient_color": "grey", "skipped_update_version": "0.1.5", "template_sort_order": "most_frequently_used", "reminders_list_sort_order": "item_count_desc", "template_usage_counts": {"lists/beach": {"name": "Beach Day", "count": 2}}, "reminders_list_usage_counts": {"abc123": {"name": "Shared Grocery", "count": 3}}}',
+			'{"target_app": "apple_reminders", "delivery_mode": "create", "apple_reminders_list_id": "abc123", "apple_reminders_list_name": "Shared Grocery", "hidden_apple_reminders_list_ids": ["list-1", "list-2"], "append_short_name": false, "include_on_hand_default": true, "standard_text_color": "white", "quantity_color": "#37B7F0", "selection_color": "red", "omitted_ingredient_color": "grey", "skipped_update_version": "0.1.5", "template_sort_order": "most_frequently_used", "reminders_list_sort_order": "item_count_desc", "template_usage_counts": {"lists/beach": {"name": "Beach Day", "count": 2}}, "reminders_list_usage_counts": {"abc123": {"name": "Shared Grocery", "count": 3}}, "external_templates_path": "/tmp/shared-templates"}',
 			encoding="utf-8",
 		)
 
@@ -51,6 +52,7 @@ def test_load_config_reads_values() -> None:
 	assert config.reminders_list_sort_order == "item_count_desc"
 	assert config.template_usage_counts == {"lists/beach": {"name": "Beach Day", "count": 2}}
 	assert config.reminders_list_usage_counts == {"abc123": {"name": "Shared Grocery", "count": 3}}
+	assert config.external_templates_path == "/tmp/shared-templates"
 
 
 def test_load_config_rejects_invalid_boolean_values() -> None:
@@ -101,6 +103,7 @@ def test_save_config_writes_values() -> None:
 		assert data["reminders_list_sort_order"] == "name_asc"
 		assert data["template_usage_counts"] == {}
 		assert data["reminders_list_usage_counts"] == {}
+		assert data["external_templates_path"] == ""
 
 
 def test_load_config_rejects_invalid_hidden_reminders_list_ids() -> None:

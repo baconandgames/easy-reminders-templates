@@ -30,6 +30,20 @@ When ListKit is installed outside this repository, user templates live in:
 ~/Library/Application Support/Easy Reminder Templates/templates/
 ```
 
+ListKit can also read from one external template folder configured in Settings
+under **Manage Sharing (Experimental)**. Shared templates use the same JSON
+format and appear with `(shared)` in the template picker.
+
+For best results, use a dedicated shared folder that contains only valid
+ListKit template JSON files. Non-JSON files are ignored. Invalid JSON files or
+JSON files that do not match the template format are skipped, and ListKit will
+show a warning while still loading valid local and shared templates.
+
+Local and shared templates may use the same filename; the shared copy appears as
+a separate `(shared)` template. Within the shared folder, avoid duplicate
+filenames and duplicate short names. If the same short name exists locally and
+in the shared folder, `listkit <short-name>` will ask which template to use.
+
 ## Template Types
 
 ListKit currently supports two template types:
@@ -228,6 +242,10 @@ Create Template from List
 
 ListKit will ask which Apple Reminders list to import, then ask for a template
 name and short name. It creates a new JSON file under `templates/`.
+
+If an external template folder is configured in **Manage Sharing
+(Experimental)**, ListKit will also ask whether to save the new template locally
+or in the shared folder.
 
 Generated templates include blank `default_batch`, `quantity`, and `unit` fields
 so they can be edited into recipe-style templates later.

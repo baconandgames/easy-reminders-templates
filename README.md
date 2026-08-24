@@ -242,7 +242,12 @@ text editor.
   "quantity_color": "#37b7f0",
   "selection_color": "#ff4b1f",
   "omitted_ingredient_color": "#777777",
-  "skipped_update_version": ""
+  "skipped_update_version": "",
+  "template_sort_order": "name_asc",
+  "reminders_list_sort_order": "name_asc",
+  "template_usage_counts": {},
+  "reminders_list_usage_counts": {},
+  "external_templates_path": ""
 }
 ```
 
@@ -274,5 +279,13 @@ When `apple_reminders_list_id` is set, it is preferred over
 
 Run `listkit settings` to open Settings; `listkit config` is also supported.
 From there, choose which Apple Reminders lists appear as destinations, edit
-terminal colors, update common defaults, and check for GitHub release updates.
-Hidden lists are stored in `hidden_apple_reminders_list_ids`.
+terminal colors, update common defaults, manage experimental template sharing,
+and check for GitHub release updates. Hidden lists are stored in
+`hidden_apple_reminders_list_ids`.
+
+Template sharing is experimental. When `external_templates_path` is set, ListKit
+also reads JSON templates from that folder and marks them with `(shared)` in the
+template picker. This is intended for folders synced by iCloud Drive, Dropbox,
+Google Drive, or another folder on this Mac. Use a dedicated folder with valid
+ListKit template JSON files; non-JSON files are ignored, and invalid JSON files
+are skipped with a warning.

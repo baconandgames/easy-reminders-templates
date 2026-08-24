@@ -30,6 +30,24 @@ def write_template(templates_path: Path) -> None:
 	)
 
 
+def write_named_template(templates_path: Path, filename: str, name: str, short_name: str) -> None:
+	template_path: Path = templates_path / filename
+	template_path.parent.mkdir(parents=True, exist_ok=True)
+	template_path.write_text(
+		json.dumps(
+			{
+				"type": "list",
+				"name": name,
+				"short_name": short_name,
+				"items": [
+					{"name": "Apples", "quantity": None, "unit": None, "always_on_hand": False},
+				],
+			}
+		),
+		encoding="utf-8",
+	)
+
+
 def test_app_shell_uses_enter_escape_without_q_quit_binding() -> None:
 	keys: set[str] = {binding[0] for binding in ListKitApp.BINDINGS}
 
@@ -83,6 +101,202 @@ def test_main_menu_shows_launch_update_shortcut(monkeypatch, tmp_path) -> None:
 			assert "[bold]Update Available: v0.4.7 > v0.4.8[/]" in labels
 
 	asyncio.run(run_app())
+
+
+def test_template_picker_marks_shared_templates(tmp_path) -> None:
+	local_path = tmp_path / "local"
+	shared_path = tmp_path / "shared"
+	write_named_template(local_path, "local-list.json", "Local List", "local")
+	write_named_template(shared_path, "shared-list.json", "Shared List", "shared")
+
+	async def run_app() -> None:
+		app = ListKitApp(Config(external_templates_path=str(shared_path)), local_path)
+		async with app.run_test() as pilot:
+			await pilot.pause()
+			app.show_template_menu()
+			await pilot.pause()
+			labels = [
+				item.label_text
+				for item in app.query_one(ListView).children
+				if isinstance(item, OptionItem)
+			]
+			assert "Local List" in labels
+			assert "Shared List (shared)" in labels
+
+	asyncio.run(run_app())
+
+
+def test_shared_template_with_duplicate_filename_can_coexist_with_local_template(tmp_path) -> None:
+	local_path = tmp_path / "local"
+	shared_path = tmp_path / "shared"
+	write_named_template(local_path, "trip.json", "Local Trip", "local-trip")
+	write_named_template(shared_path, "trip.json", "Shared Trip", "shared-trip")
+
+	templates, warning = app_shell.load_app_templates(local_path, str(shared_path))
+
+	assert warning == ""
+	assert sorted(templates) == ["external:trip", "trip"]
+	assert templates["trip"]["name"] == "Local Trip"
+	assert templates["external:trip"]["name"] == "Shared Trip"
+
+
+def test_duplicate_short_name_opens_disambiguation_picker(tmp_path) -> None:
+	local_path = tmp_path / "local"
+	shared_path = tmp_path / "shared"
+	write_named_template(local_path, "local-beach.json", "Local Beach", "beach")
+	write_named_template(shared_path, "shared-beach.json", "Shared Beach", "beach")
+
+	async def run_app() -> None:
+		app = ListKitApp(Config(external_templates_path=str(shared_path)), local_path, short_name="beach")
+		async with app.run_test() as pilot:
+			await pilot.pause()
+			assert app.view_name == "template_short_name_disambiguation"
+			labels = [
+				item.label_text
+				for item in app.query_one(ListView).children
+				if isinstance(item, OptionItem)
+			]
+			assert "Local Beach" in labels
+			assert "Shared Beach (shared)" in labels
+
+	asyncio.run(run_app())
+
+
+def test_missing_shared_folder_warns_and_keeps_local_templates(tmp_path) -> None:
+	local_path = tmp_path / "local"
+	write_named_template(local_path, "local-list.json", "Local List", "local")
+	missing_shared_path = tmp_path / "missing"
+
+	async def run_app() -> None:
+		app = ListKitApp(Config(external_templates_path=str(missing_shared_path)), local_path)
+		async with app.run_test() as pilot:
+			await pilot.pause()
+			app.show_template_menu()
+			await pilot.pause()
+			labels = [
+				item.label_text
+				for item in app.query_one(ListView).children
+				if isinstance(item, OptionItem)
+			]
+			assert "Local List" in labels
+			assert "Shared template folder is unavailable" in str(app.query_one("#context", app_shell.Static).content)
+
+	asyncio.run(run_app())
+
+
+def test_invalid_shared_template_warns_and_keeps_valid_shared_templates(tmp_path) -> None:
+	local_path = tmp_path / "local"
+	shared_path = tmp_path / "shared"
+	write_named_template(local_path, "local-list.json", "Local List", "local")
+	write_named_template(shared_path, "shared-list.json", "Shared List", "shared")
+	(shared_path / "broken.json").write_text("{", encoding="utf-8")
+
+	async def run_app() -> None:
+		app = ListKitApp(Config(external_templates_path=str(shared_path)), local_path)
+		async with app.run_test() as pilot:
+			await pilot.pause()
+			app.show_template_menu()
+			await pilot.pause()
+			labels = [
+				item.label_text
+				for item in app.query_one(ListView).children
+				if isinstance(item, OptionItem)
+			]
+			assert "Local List" in labels
+			assert "Shared List (shared)" in labels
+			assert "Skipped 1 shared template file" in str(app.query_one("#context", app_shell.Static).content)
+
+	asyncio.run(run_app())
+
+
+def test_sharing_menu_can_save_and_remove_shared_folder(monkeypatch, tmp_path) -> None:
+	write_template(tmp_path)
+	shared_path = tmp_path / "shared"
+	shared_path.mkdir()
+	config_path = tmp_path / "config.json"
+
+	async def run_app() -> None:
+		app = ListKitApp(Config(), tmp_path, config_path=config_path)
+		async with app.run_test() as pilot:
+			await pilot.pause()
+			app.show_sharing_menu()
+			await pilot.pause()
+			labels = [
+				item.label_text
+				for item in app.query_one(ListView).children
+				if isinstance(item, OptionItem)
+			]
+			assert "Current Shared Folder: None" in labels
+			assert labels[labels.index("Current Shared Folder: None") + 1] == ""
+			assert "Choose Shared Folder" in labels
+
+			monkeypatch.setattr(app_shell, "choose_folder_with_dialog", lambda: str(shared_path))
+			app.choose_shared_folder()
+			await pilot.pause()
+			assert load_config(config_path).external_templates_path == str(shared_path)
+			labels = [
+				item.label_text
+				for item in app.query_one(ListView).children
+				if isinstance(item, OptionItem)
+			]
+			assert "Change Shared Folder" in labels
+			assert "Remove Shared Folder" in labels
+			assert "Open Shared Folder" in labels
+
+			app.remove_shared_folder()
+			await pilot.pause()
+			assert load_config(config_path).external_templates_path == ""
+
+	asyncio.run(run_app())
+
+
+def test_choose_shared_folder_cancel_returns_to_sharing_menu(monkeypatch, tmp_path) -> None:
+	write_template(tmp_path)
+	monkeypatch.setattr(app_shell, "choose_folder_with_dialog", lambda: None)
+
+	async def run_app() -> None:
+		app = ListKitApp(Config(), tmp_path)
+		async with app.run_test() as pilot:
+			await pilot.pause()
+			app.choose_shared_folder()
+			await pilot.pause()
+			assert app.view_name == "config_sharing"
+			assert "No shared folder selected." in str(app.query_one("#context", app_shell.Static).content)
+
+	asyncio.run(run_app())
+
+
+def test_choose_shared_folder_fallback_opens_path_entry(monkeypatch, tmp_path) -> None:
+	write_template(tmp_path)
+	monkeypatch.setattr(app_shell, "choose_folder_with_dialog", lambda: "")
+
+	async def run_app() -> None:
+		app = ListKitApp(Config(), tmp_path)
+		async with app.run_test() as pilot:
+			await pilot.pause()
+			app.choose_shared_folder()
+			await pilot.pause()
+			assert app.view_name == "config_sharing_path"
+			assert "Folder picker unavailable" in str(app.query_one("#context", app_shell.Static).content)
+
+	asyncio.run(run_app())
+
+
+def test_choose_folder_with_dialog_returns_selected_path() -> None:
+	def fake_runner(_command, capture_output, text, check):
+		assert capture_output is True
+		assert text is True
+		assert check is False
+		return app_shell.subprocess.CompletedProcess(args=[], returncode=0, stdout="/tmp/shared\n", stderr="")
+
+	assert app_shell.choose_folder_with_dialog(fake_runner) == "/tmp/shared"
+
+
+def test_choose_folder_with_dialog_returns_none_when_cancelled() -> None:
+	def fake_runner(_command, capture_output, text, check):
+		return app_shell.subprocess.CompletedProcess(args=[], returncode=1, stdout="", stderr="User canceled.")
+
+	assert app_shell.choose_folder_with_dialog(fake_runner) is None
 
 
 def test_new_list_escape_returns_to_target_picker(monkeypatch, tmp_path) -> None:
@@ -304,6 +518,31 @@ def test_help_screen_includes_documentation_action(tmp_path) -> None:
 				if isinstance(item, OptionItem)
 			]
 			assert "Open Templates Folder" in labels
+			assert "Open Shared Templates Folder" not in labels
+			assert "Open Documentation" in labels
+			assert "↩ Back" in labels
+
+	asyncio.run(run_app())
+
+
+def test_help_screen_includes_shared_templates_action_when_configured(tmp_path) -> None:
+	write_template(tmp_path)
+	shared_path = tmp_path / "shared"
+	shared_path.mkdir()
+
+	async def run_app() -> None:
+		app = ListKitApp(Config(external_templates_path=str(shared_path)), tmp_path)
+		async with app.run_test() as pilot:
+			await pilot.pause()
+			app.show_help()
+			await pilot.pause()
+			labels = [
+				item.label_text
+				for item in app.query_one(ListView).children
+				if isinstance(item, OptionItem)
+			]
+			assert "Open Templates Folder" in labels
+			assert "Open Shared Templates Folder" in labels
 			assert "Open Documentation" in labels
 			assert "↩ Back" in labels
 
@@ -385,6 +624,95 @@ def test_create_template_from_list_runs_inside_app_shell(monkeypatch, tmp_path) 
 	assert template_data["name"] == "Packing"
 	assert template_data["short_name"] == "packing"
 	assert [item["name"] for item in template_data["items"]] == ["Socks", "Charger"]
+
+
+def test_create_template_flow_prompts_for_storage_when_shared_folder_exists(monkeypatch, tmp_path) -> None:
+	local_path = tmp_path / "local"
+	shared_path = tmp_path / "shared"
+	local_path.mkdir()
+	shared_path.mkdir()
+
+	class FakeAppleRemindersTarget:
+		def list_targets(self) -> list[DeliveryTargetOption]:
+			return [
+				DeliveryTargetOption(
+					identifier="target-id",
+					name="Packing",
+					source="iCloud",
+					item_count=1,
+					sample_items=[],
+				)
+			]
+
+		def list_items(self, _identifier: str) -> list[str]:
+			return ["Socks"]
+
+	monkeypatch.setattr(app_shell, "AppleRemindersTarget", FakeAppleRemindersTarget)
+
+	async def run_app() -> None:
+		app = ListKitApp(Config(external_templates_path=str(shared_path)), local_path)
+		async with app.run_test() as pilot:
+			app.show_create_template_source_screen()
+			await pilot.press("enter")
+			await pilot.press("enter")
+			await pilot.press("enter")
+			await pilot.pause()
+			assert app.view_name == "template_storage"
+			labels = [
+				item.label_text
+				for item in app.query_one(ListView).children
+				if isinstance(item, OptionItem)
+			]
+			assert "Local Templates Folder" in labels
+			assert "Shared Templates Folder" in labels
+
+	asyncio.run(run_app())
+
+
+def test_create_template_storage_can_save_locally_when_shared_folder_exists(tmp_path) -> None:
+	local_path = tmp_path / "local"
+	shared_path = tmp_path / "shared"
+	local_path.mkdir()
+	shared_path.mkdir()
+
+	async def run_app() -> None:
+		app = ListKitApp(Config(external_templates_path=str(shared_path)), local_path)
+		async with app.run_test() as pilot:
+			await pilot.pause()
+			app.template_name = "Packing"
+			app.template_short_name = "packing"
+			app.template_item_names = ["Socks"]
+			app.save_template_to_storage("local")
+			await pilot.pause()
+			assert app.view_name == "result"
+
+	asyncio.run(run_app())
+
+	assert (local_path / "lists" / "packing.json").exists()
+	assert not (shared_path / "lists" / "packing.json").exists()
+
+
+def test_create_template_storage_can_save_to_shared_folder(tmp_path) -> None:
+	local_path = tmp_path / "local"
+	shared_path = tmp_path / "shared"
+	local_path.mkdir()
+	shared_path.mkdir()
+
+	async def run_app() -> None:
+		app = ListKitApp(Config(external_templates_path=str(shared_path)), local_path)
+		async with app.run_test() as pilot:
+			await pilot.pause()
+			app.template_name = "Packing"
+			app.template_short_name = "packing"
+			app.template_item_names = ["Socks"]
+			app.save_template_to_storage("shared")
+			await pilot.pause()
+			assert app.view_name == "result"
+
+	asyncio.run(run_app())
+
+	assert not (local_path / "lists" / "packing.json").exists()
+	assert (shared_path / "lists" / "packing.json").exists()
 
 
 def test_write_template_from_empty_reminders_list_creates_blank_item(tmp_path) -> None:

@@ -25,7 +25,52 @@ def load_templates(path: Path) -> TemplateMap:
 	return _load_legacy_template_file(path)
 
 
+def load_valid_templates_from_directory(path: Path) -> tuple[TemplateMap, list[str]]:
+	if not path.exists():
+		raise TemplateLoadError(f"Template path not found: {path}")
+	if not path.is_dir():
+		raise TemplateLoadError(f"Template path must be a directory: {path}")
+
+	templates: TemplateMap = {}
+	template_paths: dict[str, Path] = {}
+	warnings: list[str] = []
+	for template_path in sorted(path.rglob("*.json")):
+		template_id: str = template_path.stem
+		try:
+			template: Template = _read_template_file(template_path)
+			_validate_template(template_id, template)
+		except TemplateLoadError as error:
+			warnings.append(f"Skipped {template_path.name}: {error}")
+			continue
+
+		if template_id in templates:
+			warnings.append(
+				f'Skipped {template_path.name}: duplicate template ID "{template_id}" already loaded from '
+				f"{template_paths[template_id].name}."
+			)
+			continue
+
+		templates[template_id] = template
+		template_paths[template_id] = template_path
+
+	if len(templates) == 0 and len(warnings) == 0:
+		raise TemplateLoadError(f"No template JSON files found in: {path}")
+
+	short_name_warnings = _remove_duplicate_short_names(templates)
+	warnings.extend(short_name_warnings)
+	return templates, warnings
+
+
 def find_template_by_short_name(templates: TemplateMap, short_name: str) -> tuple[str, Template] | None:
+	matches: list[tuple[str, Template]] = find_templates_by_short_name(templates, short_name)
+
+	if len(matches) > 1:
+		raise TemplateLoadError(f'Multiple templates use short_name "{short_name}".')
+
+	return matches[0] if matches else None
+
+
+def find_templates_by_short_name(templates: TemplateMap, short_name: str) -> list[tuple[str, Template]]:
 	normalized_short_name: str = short_name.casefold()
 	matches: list[tuple[str, Template]] = []
 
@@ -38,10 +83,7 @@ def find_template_by_short_name(templates: TemplateMap, short_name: str) -> tupl
 		):
 			matches.append((template_id, template))
 
-	if len(matches) > 1:
-		raise TemplateLoadError(f'Multiple templates use short_name "{short_name}".')
-
-	return matches[0] if matches else None
+	return matches
 
 
 def template_uses_batch_size(template: Template) -> bool:
@@ -194,6 +236,29 @@ def _validate_unique_short_names(templates: TemplateMap) -> None:
 			)
 
 		short_names[normalized_short_name] = (template_id, short_name)
+
+
+def _remove_duplicate_short_names(templates: TemplateMap) -> list[str]:
+	short_names: dict[str, tuple[str, str]] = {}
+	warnings: list[str] = []
+	for template_id, template in list(templates.items()):
+		short_name: Any = template.get("short_name")
+		if not isinstance(short_name, str) or short_name == "":
+			continue
+
+		normalized_short_name: str = short_name.casefold()
+		if normalized_short_name in short_names:
+			existing_template_id, existing_short_name = short_names[normalized_short_name]
+			templates.pop(template_id)
+			warnings.append(
+				f'Skipped {template_id}.json: duplicate short_name "{short_name}" conflicts with '
+				f'"{existing_template_id}" using "{existing_short_name}".'
+			)
+			continue
+
+		short_names[normalized_short_name] = (template_id, short_name)
+
+	return warnings
 
 
 def _validate_item(template_id: str, index: int, item: Any) -> None:
