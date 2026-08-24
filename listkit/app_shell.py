@@ -360,7 +360,7 @@ class ListKitApp(App[int]):
 	def show_main_menu(self) -> None:
 		self.view_name = "main"
 		self.set_header(
-			f"{LISTKIT_BANNER}Easy template manager for Apple Reminders.\n[#777777]Version {get_current_version()}[/]",
+			f"{LISTKIT_BANNER}Easy templates for Apple Reminders.\n[#777777]Version {get_current_version()}[/]",
 			MAIN_MENU_INSTRUCTIONS,
 			markup=True,
 		)

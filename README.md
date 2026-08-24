@@ -1,4 +1,4 @@
-# ListKit
+# ListKit: Easy Templates for Apple Reminders
 
 > Alpha software: this project is actively changing and should be used at your
 > own risk while it is in development. It can create real Apple Reminders items,
@@ -103,6 +103,14 @@ You can also check for updates from Settings:
 
 ```sh
 listkit settings
+```
+
+For testing changes that have been pushed to `main` but not included in a
+GitHub Release yet, reinstall from the branch explicitly:
+
+```sh
+pipx install --force git+https://github.com/baconandgames/listkit.git@main
+listkit --version
 ```
 
 ## Installation Troubleshooting
