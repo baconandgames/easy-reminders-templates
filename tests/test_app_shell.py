@@ -996,6 +996,59 @@ def test_successful_reminder_creation_records_usage(monkeypatch, tmp_path) -> No
 	assert config.reminders_list_usage_counts == {"target-id": {"name": "Groceries", "count": 1}}
 
 
+def test_reminder_creation_suppresses_buffered_continue_input(monkeypatch, tmp_path) -> None:
+	write_template(tmp_path)
+
+	class FakeAppleRemindersTarget:
+		def create_list(self, shopping_list, _config):
+			return app_shell.DeliveryResult(
+				target_app="apple_reminders",
+				target_name="Apple Reminders: Groceries",
+				created_items=[item.name for item in shopping_list.included_items],
+				omitted_items=[],
+			)
+
+	monkeypatch.setattr(app_shell, "AppleRemindersTarget", FakeAppleRemindersTarget)
+
+	async def run_app() -> None:
+		app = ListKitApp(Config(), tmp_path)
+		async with app.run_test() as pilot:
+			await pilot.pause()
+			app.start_template(next(iter(app.templates.values())), "test-list")
+			app.delivery_target = DeliveryTargetOption("target-id", "Groceries", "iCloud", 0, [])
+			app.create_reminders()
+			assert app.view_name == "result"
+			app.action_continue()
+			assert app.view_name == "result"
+			app.suppress_input_until = 0.0
+			app.action_continue()
+			assert app.view_name == "template"
+
+	asyncio.run(run_app())
+
+
+def test_reminders_busy_state_clears_after_delivery_error(monkeypatch, tmp_path) -> None:
+	write_template(tmp_path)
+
+	class FakeAppleRemindersTarget:
+		def create_list(self, _shopping_list, _config):
+			raise app_shell.DeliveryError("Reminders unavailable")
+
+	monkeypatch.setattr(app_shell, "AppleRemindersTarget", FakeAppleRemindersTarget)
+
+	async def run_app() -> None:
+		app = ListKitApp(Config(), tmp_path)
+		async with app.run_test() as pilot:
+			await pilot.pause()
+			app.start_template(next(iter(app.templates.values())), "test-list")
+			app.delivery_target = DeliveryTargetOption("target-id", "Groceries", "iCloud", 0, [])
+			app.create_reminders()
+			assert app.view_name == "error"
+			assert app.reminders_operation_running is False
+
+	asyncio.run(run_app())
+
+
 def test_usage_history_screens_show_counts_and_actions(monkeypatch, tmp_path) -> None:
 	write_template(tmp_path)
 

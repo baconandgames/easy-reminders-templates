@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import re
 import subprocess
+import time
 import webbrowser
 from dataclasses import replace
 from pathlib import Path
@@ -314,6 +315,8 @@ class ListKitApp(App[int]):
 		self.update_result: UpdateResult | None = None
 		self.update_worker: Worker | None = None
 		self.launch_update_worker: Worker | None = None
+		self.reminders_operation_running: bool = False
+		self.suppress_input_until: float = 0.0
 		self.template_source_target: DeliveryTargetOption | None = None
 		self.template_item_names: list[str] = []
 		self.template_name: str = ""
@@ -723,16 +726,20 @@ class ListKitApp(App[int]):
 		if list_name.strip() == "":
 			self.show_new_list_screen("List name cannot be blank.")
 			return
+		self.show_reminders_busy_state("Creating Reminders List", "Preparing Reminders access. macOS may ask for permission.")
 		try:
 			self.delivery_target = AppleRemindersTarget().create_target(list_name.strip())
 		except DeliveryError as error:
 			self.show_error(str(error))
 			return
+		finally:
+			self.end_reminders_operation()
 		self.create_reminders()
 
 	def create_reminders(self) -> None:
 		assert self.shopping_list is not None
 		assert self.delivery_target is not None
+		self.show_reminders_busy_state("Adding Items", "Preparing Reminders access. macOS may ask for permission.")
 		target_config = replace(
 			self.config,
 			apple_reminders_list_id=self.delivery_target.identifier,
@@ -743,10 +750,27 @@ class ListKitApp(App[int]):
 		except DeliveryError as error:
 			self.show_error(str(error))
 			return
+		finally:
+			self.end_reminders_operation()
 		self.record_template_usage()
 		self.record_reminders_list_usage(self.delivery_target)
 		self.save_current_config()
 		self.show_result(result)
+
+	def show_reminders_busy_state(self, title: str, context: str) -> None:
+		self.reminders_operation_running = True
+		self.view_name = "reminders_busy"
+		self.set_header(title, context)
+		self.set_footer("[Ctrl-C quit]")
+		self.replace_body(
+			Static("Waiting for Reminders..."),
+			ProgressBar(total=None, show_percentage=False, show_eta=False),
+		)
+		self.refresh(layout=True)
+
+	def end_reminders_operation(self) -> None:
+		self.reminders_operation_running = False
+		self.suppress_input_until = time.monotonic() + 0.75
 
 	def show_result(self, result: DeliveryResult) -> None:
 		self.view_name = "result"
@@ -1656,6 +1680,8 @@ class ListKitApp(App[int]):
 			body.mount(child)  # type: ignore[arg-type]
 
 	def on_list_view_selected(self, event: ListView.Selected) -> None:
+		if self.should_suppress_input():
+			return
 		item = event.item
 		if not isinstance(item, OptionItem):
 			return
@@ -1669,6 +1695,8 @@ class ListKitApp(App[int]):
 		self.handle_action(value)
 
 	def handle_action(self, value: object) -> None:
+		if self.should_suppress_input():
+			return
 		if value == "exit":
 			self.exit(self.result_code)
 		elif value == "back":
@@ -1758,6 +1786,8 @@ class ListKitApp(App[int]):
 		self.show_target_screen()
 
 	def on_input_submitted(self, event: Input.Submitted) -> None:
+		if self.should_suppress_input():
+			return
 		if event.input.id == "batch-input":
 			self.submit_batch(event.value)
 		elif event.input.id == "new-list-input":
@@ -1783,6 +1813,8 @@ class ListKitApp(App[int]):
 		self.show_on_hand_screen()
 
 	def action_continue(self) -> None:
+		if self.should_suppress_input():
+			return
 		if self.view_name == "result":
 			self.show_template_menu()
 		elif self.view_name == "help":
@@ -1795,6 +1827,8 @@ class ListKitApp(App[int]):
 			self.show_config_menu()
 
 	def action_back(self) -> None:
+		if self.should_suppress_input():
+			return
 		if self.view_name == "main":
 			self.exit(0)
 		elif self.view_name == "config":
@@ -1867,6 +1901,9 @@ class ListKitApp(App[int]):
 	def action_quit_app(self) -> None:
 		self.result_code = 130
 		self.exit(self.result_code)
+
+	def should_suppress_input(self) -> bool:
+		return self.reminders_operation_running or time.monotonic() < self.suppress_input_until
 
 
 def run_textual_listkit(
