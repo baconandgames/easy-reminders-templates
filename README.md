@@ -163,11 +163,16 @@ listkit chili
 When no short name is provided, `listkit` opens the main menu. Choose **Add from
 Template** to select a saved template, **Create Template from List** to turn an
 existing Reminders list into a template, or **Settings** to adjust defaults,
-colors, visible Reminders lists, and updates.
+colors, visible Reminders lists, template sharing, and updates.
 
 You can also jump directly into a template with its short name, such as
 `listkit chili`. If the short name is not found, `listkit` falls back to the
 template picker so you can choose a template or return to the main menu.
+
+Short names are meant for templates you run often. For example, `listkit chili`
+is useful for a regular recipe, while a one-off travel checklist may be easier
+to choose from the template picker. If the same short name exists in both local
+and shared templates, ListKit asks which one you want instead of guessing.
 
 When installed outside this repository, `listkit` creates user files in:
 
@@ -226,6 +231,39 @@ Bundled examples show three common use cases:
   where usually-bought items start selected and occasional purchases are marked
   as on-hand.
 
+## Shared Template Folders
+
+Template sharing is experimental. Use **Settings** > **Manage Sharing
+(Experimental)** to connect one shared folder from iCloud Drive, Dropbox, Google
+Drive, or another folder on this Mac.
+
+Shared folders are useful when more than one person should be able to use the
+same templates. For example, a family might share recipes, packing lists, pet
+care checklists, or recurring household shopping lists. Keep personal templates
+local when they are only useful to you, contain private information, or are
+still being drafted.
+
+Shared templates appear in the picker with `(shared)` after the name:
+
+```text
+Beach Day
+Beach Day (shared)
+```
+
+When creating a template from an Apple Reminders list, ListKit asks whether to
+save it locally or in the shared folder if sharing is configured. Choose local
+for private or unfinished templates. Choose shared when the template is ready
+for everyone using that folder. Shared templates are saved directly in the
+folder you selected, so reconnect to that same folder later.
+
+Use a dedicated shared folder with valid ListKit template JSON files. Non-JSON
+files are ignored. Invalid shared JSON files are skipped with a warning so the
+rest of your templates can still load. If the shared folder is moved, renamed,
+or unavailable, local templates still work.
+
+From **Help**, choose **Open Shared Templates Folder** to inspect the shared
+folder in Finder when sharing is configured.
+
 ## Configuration
 
 Terminal display options live in `config.json` and can be edited directly in a
@@ -283,9 +321,5 @@ terminal colors, update common defaults, manage experimental template sharing,
 and check for GitHub release updates. Hidden lists are stored in
 `hidden_apple_reminders_list_ids`.
 
-Template sharing is experimental. When `external_templates_path` is set, ListKit
-also reads JSON templates from that folder and marks them with `(shared)` in the
-template picker. This is intended for folders synced by iCloud Drive, Dropbox,
-Google Drive, or another folder on this Mac. Use a dedicated folder with valid
-ListKit template JSON files; non-JSON files are ignored, and invalid JSON files
-are skipped with a warning.
+Template sharing is stored in `external_templates_path`. A blank value means no
+shared folder is configured.

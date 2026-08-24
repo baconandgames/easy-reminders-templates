@@ -34,15 +34,32 @@ ListKit can also read from one external template folder configured in Settings
 under **Manage Sharing (Experimental)**. Shared templates use the same JSON
 format and appear with `(shared)` in the template picker.
 
-For best results, use a dedicated shared folder that contains only valid
-ListKit template JSON files. Non-JSON files are ignored. Invalid JSON files or
-JSON files that do not match the template format are skipped, and ListKit will
-show a warning while still loading valid local and shared templates.
+Use a shared folder for templates that are useful to more than one person, such
+as family recipes, packing lists, pet care checklists, recurring store lists, or
+household setup lists. Keep templates local when they are private, experimental,
+or only useful on your Mac.
+
+For best results, use a dedicated shared folder that contains valid ListKit
+template JSON files. Non-JSON files are ignored, so a note or README in the
+folder is harmless. Invalid JSON files or JSON files that do not match the
+template format are skipped, and ListKit will show a warning while still loading
+valid local and shared templates.
 
 Local and shared templates may use the same filename; the shared copy appears as
 a separate `(shared)` template. Within the shared folder, avoid duplicate
 filenames and duplicate short names. If the same short name exists locally and
 in the shared folder, `listkit <short-name>` will ask which template to use.
+
+When a shared folder is configured, **Create Template from List** asks whether
+to save the new template locally or in the shared folder. Choose local while you
+are drafting or when the list contains private items. Choose shared when the
+template is ready for everyone using that folder. Shared templates are saved
+directly in the selected shared folder, not in a generated `lists/` subfolder.
+
+If the shared folder is moved, renamed, or unavailable, ListKit will warn you
+and continue with local templates. Use **Help** > **Open Shared Templates
+Folder** or **Settings** > **Manage Sharing (Experimental)** to inspect or
+change the shared folder.
 
 ## Template Types
 
@@ -162,6 +179,12 @@ Use `always_on_hand` for items that should usually start unchecked. In recipes,
 that might mean pantry staples. In packing lists, it might mean items that stay
 in a go bag. In store lists, it can mean things you buy sometimes, but not every
 visit.
+
+Use `short_name` for templates that should be quick to launch from Terminal,
+such as `chili`, `beach`, or `tjs`. Leave it blank or omit it when a template is
+rarely used or when a descriptive picker name is clearer than another shortcut
+to remember. Shared templates can use short names too; if a shortcut matches
+more than one template, ListKit asks which one to run.
 
 ## Blank Values
 

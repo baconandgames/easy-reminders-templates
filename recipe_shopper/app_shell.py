@@ -531,11 +531,18 @@ class ListKitApp(App[int]):
 		menu.focus()
 
 	def create_template_from_list(self, templates_path: Path) -> None:
+		self.write_template_to_path(templates_path, use_lists_subfolder=True)
+
+	def create_shared_template_from_list(self, templates_path: Path) -> None:
+		self.write_template_to_path(templates_path, use_lists_subfolder=False)
+
+	def write_template_to_path(self, templates_path: Path, use_lists_subfolder: bool) -> None:
 		template_path = write_template_from_reminders_list(
 			templates_path,
 			self.template_name,
 			self.template_short_name,
 			self.template_item_names,
+			use_lists_subfolder=use_lists_subfolder,
 		)
 		try:
 			self.templates, self.template_load_warning = load_app_templates(
@@ -554,7 +561,7 @@ class ListKitApp(App[int]):
 				self.show_template_storage_screen()
 				self.query_one("#context", Static).update("Shared folder is unavailable. Choose local storage or update sharing settings.")
 				return
-			self.create_template_from_list(shared_path)
+			self.create_shared_template_from_list(shared_path)
 			return
 		self.create_template_from_list(self.templates_path)
 
@@ -2281,10 +2288,11 @@ def write_template_from_reminders_list(
 	template_name: str,
 	short_name: str,
 	item_names: list[str],
+	use_lists_subfolder: bool = True,
 ) -> Path:
-	lists_path: Path = templates_path / "lists"
-	lists_path.mkdir(parents=True, exist_ok=True)
-	template_path: Path = next_available_template_path(lists_path, slugify_template_filename(template_name))
+	target_path: Path = templates_path / "lists" if use_lists_subfolder else templates_path
+	target_path.mkdir(parents=True, exist_ok=True)
+	template_path: Path = next_available_template_path(target_path, slugify_template_filename(template_name))
 	template_data: dict[str, Any] = {
 		"schema_version": 1,
 		"type": "list",

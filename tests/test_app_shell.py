@@ -712,7 +712,8 @@ def test_create_template_storage_can_save_to_shared_folder(tmp_path) -> None:
 	asyncio.run(run_app())
 
 	assert not (local_path / "lists" / "packing.json").exists()
-	assert (shared_path / "lists" / "packing.json").exists()
+	assert (shared_path / "packing.json").exists()
+	assert not (shared_path / "lists" / "packing.json").exists()
 
 
 def test_write_template_from_empty_reminders_list_creates_blank_item(tmp_path) -> None:
@@ -732,6 +733,19 @@ def test_write_template_from_empty_reminders_list_creates_blank_item(tmp_path) -
 			"always_on_hand": False,
 		}
 	]
+
+
+def test_write_template_from_reminders_list_can_save_to_root(tmp_path) -> None:
+	template_path = app_shell.write_template_from_reminders_list(
+		tmp_path,
+		"Packing",
+		"packing",
+		["Socks"],
+		use_lists_subfolder=False,
+	)
+
+	assert template_path == tmp_path / "packing.json"
+	assert not (tmp_path / "lists").exists()
 
 
 def test_check_for_updates_refreshes_inline_when_current(monkeypatch, tmp_path) -> None:
