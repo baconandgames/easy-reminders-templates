@@ -19,6 +19,11 @@ project is ready for broader public testing. Please include:
 - your `listkit --version` output
 - any relevant terminal output
 
+## Release Guidance
+
+For maintainers, the GitHub Release tag and the package version in
+`pyproject.toml` must match so the in-app updater installs the expected version.
+
 ## Future Contribution Policy
 
 Once the project reaches beta or v1.0, small and focused pull requests may be

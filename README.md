@@ -9,63 +9,86 @@ Reminders lists from reusable JSON templates. It can handle recipe ingredient
 lists, packing checklists, recurring store purchases, chores, trip prep, or
 project checklists.
 
+## Screenshots
+
+![ListKit main menu](docs/images/listkit-main.png)
+
+![Review items before adding them to Reminders](docs/images/listkit-list-edits.png)
+
+![Settings menu](docs/images/listkit-settings.png)
+
+![Created items summary](docs/images/listkit-summary.png)
+
 ## Install
 
-Easy Reminder Templates is currently macOS-only.
+Easy Reminder Templates requires macOS and [Homebrew](https://brew.sh).
 
-### 1. Check for Homebrew
-
-```sh
-brew --version
-```
-
-If that command fails, install Homebrew from:
-
-```text
-https://brew.sh
-```
-
-### 2. Install pipx
+### 1. Install pipx
 
 ```sh
 brew install pipx
-pipx ensurepath
 ```
 
-Close and reopen Terminal if `pipx ensurepath` says your PATH changed.
-
-Check that `pipx` is available:
-
-```sh
-pipx --version
-```
-
-On older Macs, Homebrew may need to build Python from source. If that is slow or
-fails, install Python 3.11 first and tell `pipx` to use it:
-
-```sh
-brew install python@3.11
-pipx install --python /usr/local/bin/python3.11 git+https://github.com/baconandgames/easy-reminders-templates.git
-```
-
-### 3. Install Easy Reminder Templates
+### 2. Install Easy Reminder Templates
 
 ```sh
 pipx install git+https://github.com/baconandgames/easy-reminders-templates.git
 ```
 
-Check that `listkit` is available:
+### 3. Add pipx applications to your PATH
 
 ```sh
-listkit --help
+pipx ensurepath
 ```
 
-To update an existing install:
+If `pipx ensurepath` reports that it changed your PATH, **close and reopen
+Terminal before continuing**. This is required before the `listkit` command is
+available in a new shell session.
+
+Zsh users can reload the current Terminal session instead:
+
+```sh
+exec zsh -l
+```
+
+Verify the installation:
+
+```sh
+listkit --version
+```
+
+Launch ListKit:
+
+```sh
+listkit
+```
+
+## First Run
+
+ListKit works with its default settings, so opening Settings first is optional.
+
+To review or change defaults:
+
+```sh
+listkit settings
+```
+
+The first time ListKit accesses Apple Reminders, macOS may ask you to grant
+Reminders permission. Approve the request to create lists and reminders.
+
+## Update
+
+Update ListKit from Terminal with:
 
 ```sh
 pipx upgrade easy-reminder-templates
 listkit --version
 ```
+
+The update checker uses GitHub Releases. If a newer release exists, `listkit`
+shows its changelog and can install the update from inside Settings. After a
+successful update, ListKit prompts you to quit and relaunch so the new version is
+active.
 
 You can also check for updates from Settings:
 
@@ -73,30 +96,51 @@ You can also check for updates from Settings:
 listkit settings
 ```
 
-The update checker uses GitHub Releases. If a newer release exists, `listkit`
-shows its changelog and can install the update from inside Settings. After a
-successful update, ListKit prompts you to quit and relaunch so the new version is
-active. You can also skip that release; a later release will appear again.
+## Installation Troubleshooting
 
-For maintainers: the GitHub Release tag and the package version in
-`pyproject.toml` must match so the in-app updater installs the expected version.
+### `listkit: command not found`
 
-## First Run
-
-Open Settings first:
+First, confirm that ListKit was installed:
 
 ```sh
-listkit settings
+pipx list
+~/.local/bin/listkit --version
 ```
 
-Then create a list from a template:
+If the direct `~/.local/bin/listkit` command works, ListKit is installed but the
+pipx application directory is not on your PATH. Run:
 
 ```sh
-listkit
+pipx ensurepath
 ```
 
-The first time `listkit` creates Apple Reminders, macOS may ask for permission to
-access Reminders.
+Then close and reopen Terminal, or reload Zsh with:
+
+```sh
+exec zsh -l
+```
+
+Try again:
+
+```sh
+listkit --version
+```
+
+### Python installation fails on an older Mac
+
+On some older Macs, Homebrew may be unable to install its default Python version
+from a prebuilt package and may attempt a slow source build. Install Python 3.11
+explicitly and use it for ListKit:
+
+```sh
+brew install python@3.11
+pipx install \
+  --python "$(brew --prefix python@3.11)/bin/python3.11" \
+  git+https://github.com/baconandgames/easy-reminders-templates.git
+```
+
+Using `brew --prefix` makes this command work with both Intel and Apple silicon
+Homebrew installations.
 
 ## Local Development
 
