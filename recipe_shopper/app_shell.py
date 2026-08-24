@@ -109,7 +109,7 @@ LISTKIT_BANNER: str = """\
 MAIN_MENU_INSTRUCTIONS: str = (
 	"ListKit helps you turn recipes, packing lists, regular shopping trips, and other repeatable tasks into reusable "
 	"templates. Choose Add from Template to start from an example or make your own template from an existing Apple "
-	"Reminders list. For details, see the documentation: [link]."
+	"Reminders list."
 )
 
 
@@ -1339,9 +1339,14 @@ class ListKitApp(App[int]):
 			return
 		usage_counts = dict(self.config.template_usage_counts)
 		template_name = self.template["name"] if self.template is not None else self.template_id
+		count = template_usage_record_count(usage_counts, self.template_id)
+		for usage_template_id in list(usage_counts):
+			if is_legacy_template_usage_id_match(usage_template_id, self.template_id):
+				usage_counts.pop(usage_template_id)
+
 		usage_counts[self.template_id] = {
 			"name": str(template_name),
-			"count": usage_record_count(usage_counts.get(self.template_id)) + 1,
+			"count": count + 1,
 		}
 		self.config = replace(self.config, template_usage_counts=usage_counts)
 
@@ -1696,7 +1701,7 @@ def sort_templates(
 	if sort_order == "name_desc":
 		return sorted(items, key=lambda entry: entry[1]["name"].casefold(), reverse=True)
 	if sort_order == "most_frequently_used":
-		return sorted(items, key=lambda entry: (-usage_record_count(usage_counts.get(entry[0])), entry[1]["name"].casefold()))
+		return sorted(items, key=lambda entry: (-template_usage_record_count(usage_counts, entry[0]), entry[1]["name"].casefold()))
 	return sorted(items, key=lambda entry: entry[1]["name"].casefold())
 
 
@@ -1734,13 +1739,13 @@ def format_sort_order_label(sort_order: str) -> str:
 
 def format_template_usage_rows(templates: TemplateMap, usage_counts: dict[str, object]) -> list[str]:
 	rows: list[tuple[str, int]] = [
-		(template["name"], usage_record_count(usage_counts.get(template_id)))
+		(template["name"], template_usage_record_count(usage_counts, template_id))
 		for template_id, template in templates.items()
 	]
 	rows.extend(
 		(format_missing_usage_label("Missing template", template_id, record), usage_record_count(record))
 		for template_id, record in usage_counts.items()
-		if template_id not in templates and usage_record_count(record) > 0
+		if not template_usage_id_matches_templates(template_id, templates) and usage_record_count(record) > 0
 	)
 	return format_usage_rows(rows)
 
@@ -1793,6 +1798,25 @@ def format_missing_usage_label(prefix: str, identifier: str, record: object) -> 
 	if name == "":
 		return f"{prefix}: {identifier}"
 	return f"{prefix}: {name} ({identifier})"
+
+
+def template_usage_record_count(usage_counts: dict[str, object], template_id: str) -> int:
+	return sum(
+		usage_record_count(record)
+		for usage_template_id, record in usage_counts.items()
+		if usage_template_id == template_id or is_legacy_template_usage_id_match(usage_template_id, template_id)
+	)
+
+
+def template_usage_id_matches_templates(template_id: str, templates: TemplateMap) -> bool:
+	return template_id in templates or any(
+		is_legacy_template_usage_id_match(template_id, loaded_template_id)
+		for loaded_template_id in templates
+	)
+
+
+def is_legacy_template_usage_id_match(usage_template_id: str, template_id: str) -> bool:
+	return "/" in usage_template_id and Path(usage_template_id).name == template_id
 
 
 def order_items_with_on_hand_last(items: list[ShoppingListItem]) -> list[tuple[int, ShoppingListItem]]:

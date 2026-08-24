@@ -197,12 +197,14 @@ Templates live as individual JSON files under `templates/`.
 
 ```text
 templates/
-  recipes/
-    classic-chili.json
-  lists/
-    beach-day.json
-    trader-joes-common-purchases.json
+  classic-chili.json
+  beach-day.json
+  trader-joes-common-purchases.json
 ```
+
+Subfolders are allowed for organization, but template IDs come from filenames,
+not folders. Duplicate filenames and duplicate non-empty short names are not
+allowed.
 
 See [TEMPLATES.md](TEMPLATES.md) for the full JSON template guide, including
 examples, field descriptions, blank-value behavior, and how to create a template

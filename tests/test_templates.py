@@ -2,7 +2,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from recipe_shopper.templates import find_template_by_short_name, load_templates, template_uses_batch_size
+import pytest
+
+from recipe_shopper.templates import (
+	TemplateLoadError,
+	find_template_by_short_name,
+	load_templates,
+	template_uses_batch_size,
+)
 
 
 def test_load_templates_reads_individual_template_files(tmp_path) -> None:
@@ -39,10 +46,83 @@ def test_load_templates_reads_individual_template_files(tmp_path) -> None:
 
 	templates = load_templates(templates_dir)
 
-	assert sorted(templates) == ["lists/beach-day", "recipes/classic-chili"]
-	assert templates["recipes/classic-chili"]["ingredients"][0]["quantity"] == 3
-	assert templates["lists/beach-day"]["ingredients"][0]["name"] == "Towels"
-	assert templates["lists/beach-day"]["ingredients"][0]["always_on_hand"] is False
+	assert sorted(templates) == ["beach-day", "classic-chili"]
+	assert templates["classic-chili"]["ingredients"][0]["quantity"] == 3
+	assert templates["beach-day"]["ingredients"][0]["name"] == "Towels"
+	assert templates["beach-day"]["ingredients"][0]["always_on_hand"] is False
+
+
+def test_load_templates_disallows_duplicate_filename_stems_across_subfolders(tmp_path) -> None:
+	templates_dir: Path = tmp_path / "templates"
+	recipes_dir: Path = templates_dir / "recipes"
+	lists_dir: Path = templates_dir / "lists"
+	recipes_dir.mkdir(parents=True)
+	lists_dir.mkdir()
+	template_json: str = """
+{
+  "schema_version": 1,
+  "type": "list",
+  "name": "Packing",
+  "items": [{"name": "Passport"}]
+}
+"""
+	(recipes_dir / "packing.json").write_text(template_json, encoding="utf-8")
+	(lists_dir / "packing.json").write_text(template_json, encoding="utf-8")
+
+	with pytest.raises(TemplateLoadError, match='Duplicate template ID "packing"'):
+		load_templates(templates_dir)
+
+
+def test_load_templates_disallows_duplicate_short_names_case_insensitively(tmp_path) -> None:
+	templates_dir: Path = tmp_path / "templates"
+	templates_dir.mkdir()
+	(templates_dir / "packing.json").write_text(
+		"""
+{
+  "schema_version": 1,
+  "type": "list",
+  "name": "Packing",
+  "short_name": "Pack",
+  "items": [{"name": "Passport"}]
+}
+""",
+		encoding="utf-8",
+	)
+	(templates_dir / "project-setup.json").write_text(
+		"""
+{
+  "schema_version": 1,
+  "type": "list",
+  "name": "Project Setup",
+  "short_name": "pack",
+  "items": [{"name": "Create repo"}]
+}
+""",
+		encoding="utf-8",
+	)
+
+	with pytest.raises(TemplateLoadError, match='Duplicate short_name "pack"'):
+		load_templates(templates_dir)
+
+
+def test_load_templates_disallows_reserved_short_names(tmp_path) -> None:
+	templates_dir: Path = tmp_path / "templates"
+	templates_dir.mkdir()
+	(templates_dir / "settings-list.json").write_text(
+		"""
+{
+  "schema_version": 1,
+  "type": "list",
+  "name": "Settings List",
+  "short_name": "settings",
+  "items": [{"name": "Review settings"}]
+}
+""",
+		encoding="utf-8",
+	)
+
+	with pytest.raises(TemplateLoadError, match='short_name "settings" is reserved'):
+		load_templates(templates_dir)
 
 
 def test_find_template_by_short_name_matches_template_files(tmp_path) -> None:

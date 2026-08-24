@@ -8,6 +8,7 @@ from typing import Any
 Template = dict[str, Any]
 TemplateMap = dict[str, Template]
 SUPPORTED_TEMPLATE_TYPES: set[str] = {"recipe", "list"}
+RESERVED_SHORT_NAMES: set[str] = {"cancel", "config", "help", "q", "quit", "settings", "version"}
 
 
 class TemplateLoadError(Exception):
@@ -30,7 +31,11 @@ def find_template_by_short_name(templates: TemplateMap, short_name: str) -> tupl
 
 	for template_id, template in templates.items():
 		template_short_name: Any = template.get("short_name")
-		if isinstance(template_short_name, str) and template_short_name.casefold() == normalized_short_name:
+		if (
+			isinstance(template_short_name, str)
+			and template_short_name != ""
+			and template_short_name.casefold() == normalized_short_name
+		):
 			matches.append((template_id, template))
 
 	if len(matches) > 1:
@@ -51,18 +56,24 @@ def template_has_on_hand_items(template: Template) -> bool:
 
 def _load_template_directory(path: Path) -> TemplateMap:
 	templates: TemplateMap = {}
+	template_paths: dict[str, Path] = {}
 	for template_path in sorted(path.rglob("*.json")):
-		template_id: str = template_path.relative_to(path).with_suffix("").as_posix()
+		template_id: str = template_path.stem
 		template: Template = _read_template_file(template_path)
 		_validate_template(template_id, template)
 		if template_id in templates:
-			raise TemplateLoadError(f'Duplicate template ID "{template_id}".')
+			raise TemplateLoadError(
+				f'Duplicate template ID "{template_id}" from filenames: '
+				f"{template_paths[template_id]} and {template_path}."
+			)
 
 		templates[template_id] = template
+		template_paths[template_id] = template_path
 
 	if len(templates) == 0:
 		raise TemplateLoadError(f"No template JSON files found in: {path}")
 
+	_validate_unique_short_names(templates)
 	return templates
 
 
@@ -90,6 +101,7 @@ def _load_legacy_template_file(path: Path) -> TemplateMap:
 		_validate_template(template_id, normalized_template)
 		loaded_templates[template_id] = normalized_template
 
+	_validate_unique_short_names(loaded_templates)
 	return loaded_templates
 
 
@@ -150,6 +162,8 @@ def _validate_template(template_id: Any, template: Any) -> None:
 	short_name: Any = template.get("short_name")
 	if short_name is not None and not isinstance(short_name, str):
 		raise TemplateLoadError(f'Template "{template_id}" short_name must be a string when present.')
+	if isinstance(short_name, str) and short_name != "" and short_name.casefold() in RESERVED_SHORT_NAMES:
+		raise TemplateLoadError(f'Template "{template_id}" short_name "{short_name}" is reserved.')
 
 	default_batch: Any = template.get("default_batch")
 	if default_batch is not None and (not isinstance(default_batch, int | float) or default_batch <= 0):
@@ -161,6 +175,25 @@ def _validate_template(template_id: Any, template: Any) -> None:
 
 	for index, ingredient in enumerate(ingredients, start=1):
 		_validate_item(template_id, index, ingredient)
+
+
+def _validate_unique_short_names(templates: TemplateMap) -> None:
+	short_names: dict[str, tuple[str, str]] = {}
+	for template_id, template in templates.items():
+		short_name: Any = template.get("short_name")
+		if not isinstance(short_name, str) or short_name == "":
+			continue
+
+		normalized_short_name: str = short_name.casefold()
+		if normalized_short_name in short_names:
+			existing_template_id, existing_short_name = short_names[normalized_short_name]
+			raise TemplateLoadError(
+				f'Duplicate short_name "{short_name}" in templates '
+				f'"{existing_template_id}" and "{template_id}". '
+				f'Short names are case-insensitive; "{existing_short_name}" already uses this shortcut.'
+			)
+
+		short_names[normalized_short_name] = (template_id, short_name)
 
 
 def _validate_item(template_id: str, index: int, item: Any) -> None:

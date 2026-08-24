@@ -13,12 +13,16 @@ Templates live in the `templates/` folder, with one JSON file per template.
 
 ```text
 templates/
-  recipes/
-    classic-chili.json
-  lists/
-    beach-day.json
-    trader-joes-common-purchases.json
+  classic-chili.json
+  beach-day.json
+  trader-joes-common-purchases.json
 ```
+
+Subfolders are supported for personal organization, but they do not affect how
+templates work. ListKit identifies a template by its filename without `.json`,
+so `templates/classic-chili.json` and
+`templates/recipes/classic-chili.json` both use the ID `classic-chili`.
+Duplicate filenames are not allowed anywhere under `templates/`.
 
 When ListKit is installed outside this repository, user templates live in:
 
@@ -115,7 +119,7 @@ listkit beach
 | `schema_version` | Recommended | Template | Use `1`. Reserved for future migrations. |
 | `type` | Yes | Template | Must be `"recipe"` or `"list"`. |
 | `name` | Yes | Template | Display name shown in ListKit. |
-| `short_name` | No | Template | Optional command shortcut, such as `chili` for `listkit chili`. |
+| `short_name` | No | Template | Optional command shortcut, such as `chili` for `listkit chili`. Non-empty short names must be unique case-insensitively and cannot use reserved commands such as `config`, `settings`, `help`, `version`, `q`, `quit`, or `cancel`. |
 | `default_batch` | No | Template | Positive number used as the default batch size. Leave blank or omit it to skip the batch-size prompt. |
 | `items` | Yes | Template | Array of items to add to Reminders. |
 | `name` | Yes | Item | Item name shown in ListKit and sent to Reminders. A blank string is allowed as an editable placeholder, but blank items are ignored when running a template. |
@@ -201,6 +205,9 @@ That renders as `3 Apples`.
 - Every item except the last item in an array needs a trailing comma.
 - JSON files cannot contain comments.
 - Use descriptive filenames, such as `beach-day.json` or `classic-chili.json`.
+- Avoid duplicate filenames, even when files are in different subfolders.
+- Use unique `short_name` values; `Chili` and `chili` are treated as the same
+  shortcut.
 - Keep item names singular when using quantities without units, where possible.
 - Keep unit names singular. ListKit handles simple pluralization in terminal
   output and Reminders item names.
@@ -220,7 +227,7 @@ Create Template from List
 ```
 
 ListKit will ask which Apple Reminders list to import, then ask for a template
-name and short name. It creates a new file under `templates/lists/`.
+name and short name. It creates a new JSON file under `templates/`.
 
 Generated templates include blank `default_batch`, `quantity`, and `unit` fields
 so they can be edited into recipe-style templates later.
