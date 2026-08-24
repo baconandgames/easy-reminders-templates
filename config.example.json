@@ -12,5 +12,6 @@
   "template_sort_order": "name_asc",
   "reminders_list_sort_order": "name_asc",
   "template_usage_counts": {},
-  "reminders_list_usage_counts": {}
+  "reminders_list_usage_counts": {},
+  "external_templates_path": ""
 }

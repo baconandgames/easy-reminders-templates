@@ -284,7 +284,8 @@ folder in Finder when sharing is configured.
 ## Configuration
 
 Terminal display options live in `config.json` and can be edited directly in a
-text editor.
+text editor. The repository tracks `config.example.json` as the default
+reference; local `config.json` files are ignored.
 
 ```json
 {
