@@ -1,10 +1,10 @@
-# Easy Reminders Templates
+# ListKit
 
 > Alpha software: this project is actively changing and should be used at your
 > own risk while it is in development. It can create real Apple Reminders items,
 > so consider testing with a throwaway Reminders list first.
 
-Easy Reminder Templates is a local command-line tool for creating Apple
+ListKit is a local command-line tool for creating Apple
 Reminders lists from reusable JSON templates. It can handle recipe ingredient
 lists, packing checklists, recurring store purchases, chores, trip prep, or
 project checklists.
@@ -21,7 +21,7 @@ project checklists.
 
 ## Install
 
-Easy Reminder Templates requires macOS and [Homebrew](https://brew.sh).
+ListKit requires macOS and [Homebrew](https://brew.sh).
 
 ### 1. Install pipx
 
@@ -29,10 +29,10 @@ Easy Reminder Templates requires macOS and [Homebrew](https://brew.sh).
 brew install pipx
 ```
 
-### 2. Install Easy Reminder Templates
+### 2. Install ListKit
 
 ```sh
-pipx install git+https://github.com/baconandgames/easy-reminders-templates.git
+pipx install git+https://github.com/baconandgames/listkit.git
 ```
 
 ### 3. Add pipx applications to your PATH
@@ -81,7 +81,16 @@ Reminders permission. Approve the request to create lists and reminders.
 Update ListKit from Terminal with:
 
 ```sh
-pipx upgrade easy-reminder-templates
+pipx upgrade listkit
+listkit --version
+```
+
+If you installed an older pre-0.6 version under the previous package name,
+reinstall once so future upgrades use the aligned ListKit package name:
+
+```sh
+pipx uninstall easy-reminder-templates
+pipx install git+https://github.com/baconandgames/listkit.git
 listkit --version
 ```
 
@@ -136,7 +145,7 @@ explicitly and use it for ListKit:
 brew install python@3.11
 pipx install \
   --python "$(brew --prefix python@3.11)/bin/python3.11" \
-  git+https://github.com/baconandgames/easy-reminders-templates.git
+  git+https://github.com/baconandgames/listkit.git
 ```
 
 Using `brew --prefix` makes this command work with both Intel and Apple silicon
@@ -177,7 +186,7 @@ and shared templates, ListKit asks which one you want instead of guessing.
 When installed outside this repository, `listkit` creates user files in:
 
 ```text
-~/Library/Application Support/Easy Reminder Templates/
+~/Library/Application Support/ListKit/
 ```
 
 That folder contains `config.json` and a `templates/` folder.

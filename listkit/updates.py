@@ -19,11 +19,11 @@ except ImportError:
 	certifi = None
 
 
-PACKAGE_NAME: str = "easy-reminder-templates"
-GITHUB_REPO_URL: str = "https://github.com/baconandgames/easy-reminders-templates.git"
-LATEST_RELEASE_URL: str = "https://api.github.com/repos/baconandgames/easy-reminders-templates/releases/latest"
+PACKAGE_NAME: str = "listkit"
+GITHUB_REPO_URL: str = "https://github.com/baconandgames/listkit.git"
+LATEST_RELEASE_URL: str = "https://api.github.com/repos/baconandgames/listkit/releases/latest"
 UPDATE_COMMAND: str = f"pipx upgrade {PACKAGE_NAME}"
-GITHUB_ISSUES_URL: str = "https://github.com/baconandgames/easy-reminders-templates/issues/new"
+GITHUB_ISSUES_URL: str = "https://github.com/baconandgames/listkit/issues/new"
 PIPX_BIN_CANDIDATES: tuple[Path, ...] = (
 	Path.home() / ".local/bin/pipx",
 	Path("/opt/homebrew/bin/pipx"),
@@ -92,7 +92,7 @@ def fetch_latest_release(
 		release_url,
 		headers={
 			"Accept": "application/vnd.github+json",
-			"User-Agent": "easy-reminder-templates",
+			"User-Agent": "listkit",
 		},
 	)
 	try:

@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import recipe_shopper.cli as shop_script
-import recipe_shopper.app_shell as app_shell
-from recipe_shopper.config import Config, load_config
-from recipe_shopper.delivery import DeliveryResult, DeliveryTargetOption
-from recipe_shopper.formatter import build_shopping_list
+import listkit.cli as shop_script
+import listkit.app_shell as app_shell
+from listkit.config import Config, load_config
+from listkit.delivery import DeliveryResult, DeliveryTargetOption
+from listkit.formatter import build_shopping_list
 
 
 class FakePrompt:
@@ -38,7 +38,7 @@ def test_main_execs_when_textual_requests_relaunch(monkeypatch, tmp_path) -> Non
 	assert exec_args == [
 		(
 			shop_script.sys.executable,
-			[shop_script.sys.executable, "-m", "recipe_shopper.cli"],
+			[shop_script.sys.executable, "-m", "listkit.cli"],
 		)
 	]
 
@@ -126,7 +126,7 @@ def test_render_help_uses_app_color_scheme() -> None:
 		)
 	)
 
-	assert "\033[31mEasy Reminder Templates\033[0m" in help_text
+	assert "\033[31mListKit\033[0m" in help_text
 	assert "\033[36mlistkit\033[0m chili" in help_text
 	assert "\033[36mlistkit\033[0m settings" in help_text
 	assert "\033[36mlistkit\033[0m --version" in help_text
@@ -920,7 +920,7 @@ def test_handle_update_check_exits_after_copying_update_command(monkeypatch, tmp
 def test_format_update_command_message_notes_clipboard_copy() -> None:
 	assert shop_script.format_update_command_message(copied_to_clipboard=True) == (
 		"Update command:\n"
-		"pipx upgrade easy-reminder-templates\n"
+		"pipx upgrade listkit\n"
 		"\n"
 		"The update command has been copied to your clipboard.\n"
 		"listkit will exit now. Paste the command into Terminal, and press Enter."
@@ -930,7 +930,7 @@ def test_format_update_command_message_notes_clipboard_copy() -> None:
 def test_format_update_command_message_falls_back_without_clipboard() -> None:
 	assert shop_script.format_update_command_message(copied_to_clipboard=False) == (
 		"Update command:\n"
-		"pipx upgrade easy-reminder-templates\n"
+		"pipx upgrade listkit\n"
 		"\n"
 		"listkit will exit now. Paste or type this command into Terminal, and press Enter."
 	)

@@ -3,8 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from recipe_shopper.colors import terminal_color_code
-from recipe_shopper.config import (
+from listkit.colors import terminal_color_code
+from listkit.config import (
 	DEFAULT_OMITTED_INGREDIENT_COLOR,
 	DEFAULT_QUANTITY_COLOR,
 	DEFAULT_STANDARD_TEXT_COLOR,

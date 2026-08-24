@@ -28,16 +28,16 @@ except ModuleNotFoundError:
 		"Error: missing dependency questionary. Run: python3 -m venv .venv && .venv/bin/python -m pip install -r requirements.txt"
 	)
 
-from recipe_shopper.colors import NAMED_COLORS, normalize_color, prompt_color_style, terminal_color_code
-from recipe_shopper.config import Config, ConfigLoadError, load_config, save_config
-from recipe_shopper.delivery import (
+from listkit.colors import NAMED_COLORS, normalize_color, prompt_color_style, terminal_color_code
+from listkit.config import Config, ConfigLoadError, load_config, save_config
+from listkit.delivery import (
 	AppleRemindersTarget,
 	CREATE_NEW_LIST_IDENTIFIER,
 	DeliveryError,
 	DeliveryResult,
 	DeliveryTargetOption,
 )
-from recipe_shopper.formatter import (
+from listkit.formatter import (
 	ColorScheme,
 	ShoppingList,
 	ShoppingListItem,
@@ -48,14 +48,14 @@ from recipe_shopper.formatter import (
 	format_number,
 	style_text,
 )
-from recipe_shopper.templates import (
+from listkit.templates import (
 	TemplateLoadError,
 	find_template_by_short_name,
 	load_templates,
 	template_has_on_hand_items,
 	template_uses_batch_size,
 )
-from recipe_shopper.updates import (
+from listkit.updates import (
 	UPDATE_COMMAND,
 	ReleaseInfo,
 	UpdateCheckError,
@@ -145,7 +145,7 @@ COLOR_SETTING_INSTRUCTIONS: dict[str, str] = {
 	"selection_color": "Used for active menu rows and selected prompt answers.",
 	"omitted_ingredient_color": "Used for ingredients excluded from the final list.",
 }
-APP_NAME: str = "Easy Reminder Templates"
+APP_NAME: str = "ListKit"
 
 
 class ShopAbort(Exception):
@@ -276,18 +276,18 @@ def main() -> int:
 		args.short_name = None
 
 	try:
-		from recipe_shopper.app_shell import RELAUNCH_RESULT_CODE, run_textual_listkit
+		from listkit.app_shell import RELAUNCH_RESULT_CODE, run_textual_listkit
 	except ModuleNotFoundError as error:
 		if error.name not in {"textual", "rich"}:
 			raise
-		print("Error: missing Textual dependencies. Run: pipx reinstall easy-reminder-templates", file=sys.stderr)
+		print("Error: missing Textual dependencies. Run: pipx reinstall listkit", file=sys.stderr)
 		return 1
 
 	while True:
 		result: int = run_textual_listkit(config, templates_path, args.short_name, config_path, start_config=start_config)
 		start_config = False
 		if result == RELAUNCH_RESULT_CODE:
-			os.execv(sys.executable, [sys.executable, "-m", "recipe_shopper.cli"])
+			os.execv(sys.executable, [sys.executable, "-m", "listkit.cli"])
 		if result == 20:
 			try:
 				created_template_path = create_template_from_reminders_list(
@@ -420,7 +420,7 @@ def get_user_data_dir() -> Path:
 	if sys.platform == "darwin":
 		return Path.home() / "Library" / "Application Support" / APP_NAME
 
-	return Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "easy-reminder-templates"
+	return Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "listkit"
 
 
 def should_show_help(arguments: list[str]) -> bool:

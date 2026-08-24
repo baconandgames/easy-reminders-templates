@@ -3,9 +3,9 @@ from __future__ import annotations
 import json
 import subprocess
 
-from recipe_shopper.config import Config
-from recipe_shopper.delivery import AppleRemindersTarget, DeliveryError, DeliveryTargetOption, get_delivery_target
-from recipe_shopper.formatter import build_shopping_list
+from listkit.config import Config
+from listkit.delivery import AppleRemindersTarget, DeliveryError, DeliveryTargetOption, get_delivery_target
+from listkit.formatter import build_shopping_list
 
 
 def test_get_delivery_target_returns_apple_reminders_target() -> None:

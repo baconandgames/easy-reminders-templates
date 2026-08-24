@@ -6,10 +6,10 @@ from pathlib import Path
 
 from textual.widgets import ListView
 
-import recipe_shopper.app_shell as app_shell
-from recipe_shopper.app_shell import ListKitApp, OptionItem
-from recipe_shopper.config import Config, load_config
-from recipe_shopper.delivery import DeliveryTargetOption
+import listkit.app_shell as app_shell
+from listkit.app_shell import ListKitApp, OptionItem
+from listkit.config import Config, load_config
+from listkit.delivery import DeliveryTargetOption
 
 
 def write_template(templates_path: Path) -> None:
@@ -1405,7 +1405,7 @@ def test_copy_error_and_open_issue(monkeypatch, tmp_path) -> None:
 			await pilot.pause()
 			app.update_result = app_shell.UpdateResult(
 				success=False,
-				command=("pipx", "upgrade", "easy-reminder-templates"),
+				command=("pipx", "upgrade", "listkit"),
 				output="failed output",
 				error="Command exited with 1.",
 			)

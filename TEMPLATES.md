@@ -27,7 +27,7 @@ Duplicate filenames are not allowed anywhere under `templates/`.
 When ListKit is installed outside this repository, user templates live in:
 
 ```text
-~/Library/Application Support/Easy Reminder Templates/templates/
+~/Library/Application Support/ListKit/templates/
 ```
 
 ListKit can also read from one external template folder configured in Settings

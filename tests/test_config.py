@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from recipe_shopper.config import Config, ConfigLoadError, load_config, save_config
+from listkit.config import Config, ConfigLoadError, load_config, save_config
 
 
 def test_load_config_uses_defaults_when_file_is_missing() -> None:

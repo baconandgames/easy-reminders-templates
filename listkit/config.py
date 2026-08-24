@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from recipe_shopper.colors import normalize_color
+from listkit.colors import normalize_color
 
 
 UsageRecord = dict[str, str | int]

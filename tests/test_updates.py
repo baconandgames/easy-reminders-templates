@@ -6,7 +6,7 @@ import sys
 import tomllib
 from pathlib import Path
 
-from recipe_shopper.updates import (
+from listkit.updates import (
 	PACKAGE_NAME,
 	fetch_latest_release,
 	get_current_version,
@@ -68,9 +68,9 @@ def test_get_current_version_reads_project_version() -> None:
 
 
 def test_resolve_update_command_uses_pipx_when_running_from_pipx(monkeypatch) -> None:
-	monkeypatch.setattr("recipe_shopper.updates.is_running_from_pipx", lambda: True)
-	monkeypatch.setattr("recipe_shopper.updates.is_running_from_project_checkout", lambda: False)
-	monkeypatch.setattr("recipe_shopper.updates.find_pipx", lambda: "/opt/homebrew/bin/pipx")
+	monkeypatch.setattr("listkit.updates.is_running_from_pipx", lambda: True)
+	monkeypatch.setattr("listkit.updates.is_running_from_project_checkout", lambda: False)
+	monkeypatch.setattr("listkit.updates.find_pipx", lambda: "/opt/homebrew/bin/pipx")
 
 	assert resolve_update_command("0.4.1") == (
 		"/opt/homebrew/bin/pipx",
@@ -78,13 +78,13 @@ def test_resolve_update_command_uses_pipx_when_running_from_pipx(monkeypatch) ->
 		"--force",
 		"--python",
 		sys.executable,
-		"git+https://github.com/baconandgames/easy-reminders-templates.git@v0.4.1",
+		"git+https://github.com/baconandgames/listkit.git@v0.4.1",
 	)
 
 
 def test_resolve_update_command_uses_pip_for_non_project_install(monkeypatch) -> None:
-	monkeypatch.setattr("recipe_shopper.updates.is_running_from_pipx", lambda: False)
-	monkeypatch.setattr("recipe_shopper.updates.is_running_from_project_checkout", lambda: False)
+	monkeypatch.setattr("listkit.updates.is_running_from_pipx", lambda: False)
+	monkeypatch.setattr("listkit.updates.is_running_from_project_checkout", lambda: False)
 
 	assert resolve_update_command("0.4.1") == (
 		sys.executable,
@@ -92,13 +92,13 @@ def test_resolve_update_command_uses_pip_for_non_project_install(monkeypatch) ->
 		"pip",
 		"install",
 		"--upgrade",
-		"git+https://github.com/baconandgames/easy-reminders-templates.git@v0.4.1",
+		"git+https://github.com/baconandgames/listkit.git@v0.4.1",
 	)
 
 
 def test_resolve_update_command_rejects_project_checkout(monkeypatch) -> None:
-	monkeypatch.setattr("recipe_shopper.updates.is_running_from_pipx", lambda: False)
-	monkeypatch.setattr("recipe_shopper.updates.is_running_from_project_checkout", lambda: True)
+	monkeypatch.setattr("listkit.updates.is_running_from_pipx", lambda: False)
+	monkeypatch.setattr("listkit.updates.is_running_from_project_checkout", lambda: True)
 
 	assert resolve_update_command("0.4.1") is None
 
@@ -110,7 +110,7 @@ def test_run_package_update_captures_failed_output(monkeypatch) -> None:
 		assert check is False
 		return subprocess.CompletedProcess(command, 1, stdout="stdout text", stderr="stderr text")
 
-	monkeypatch.setattr("recipe_shopper.updates.resolve_update_command", lambda version: ("pipx", "upgrade", PACKAGE_NAME))
+	monkeypatch.setattr("listkit.updates.resolve_update_command", lambda version: ("pipx", "upgrade", PACKAGE_NAME))
 
 	result = run_package_update("0.4.1", runner=fake_runner)
 

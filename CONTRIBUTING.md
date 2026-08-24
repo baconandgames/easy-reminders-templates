@@ -1,6 +1,6 @@
 # Contributing
 
-> Alpha software: Easy Reminder Templates is still in active design and
+> Alpha software: ListKit is still in active design and
 > development. The project direction, data format, and user experience may
 > change quickly before beta or v1.0.
 

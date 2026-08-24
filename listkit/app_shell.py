@@ -15,10 +15,10 @@ from textual.containers import Container, Vertical
 from textual.worker import Worker, WorkerState
 from textual.widgets import Input, Label, ListItem, ListView, ProgressBar, Static
 
-from recipe_shopper.colors import HEX_COLOR_PATTERN, normalize_color
-from recipe_shopper.config import Config, save_config
-from recipe_shopper.delivery import AppleRemindersTarget, DeliveryError, DeliveryResult, DeliveryTargetOption
-from recipe_shopper.formatter import (
+from listkit.colors import HEX_COLOR_PATTERN, normalize_color
+from listkit.config import Config, save_config
+from listkit.delivery import AppleRemindersTarget, DeliveryError, DeliveryResult, DeliveryTargetOption
+from listkit.formatter import (
 	ColorScheme,
 	ShoppingList,
 	ShoppingListItem,
@@ -26,7 +26,7 @@ from recipe_shopper.formatter import (
 	format_item,
 	format_item_prefix,
 )
-from recipe_shopper.templates import (
+from listkit.templates import (
 	TemplateLoadError,
 	TemplateMap,
 	find_templates_by_short_name,
@@ -35,7 +35,7 @@ from recipe_shopper.templates import (
 	template_has_on_hand_items,
 	template_uses_batch_size,
 )
-from recipe_shopper.updates import (
+from listkit.updates import (
 	GITHUB_ISSUES_URL,
 	ReleaseInfo,
 	UpdateCheckError,

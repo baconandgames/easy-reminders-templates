@@ -6,8 +6,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Protocol
 
-from recipe_shopper.config import Config
-from recipe_shopper.formatter import ShoppingList, format_delivery_item
+from listkit.config import Config
+from listkit.formatter import ShoppingList, format_delivery_item
 
 TargetSelector = Callable[[str, list["DeliveryTargetOption"], int], "DeliveryTargetOption"]
 CREATE_NEW_LIST_IDENTIFIER: str = "__create_new_list__"

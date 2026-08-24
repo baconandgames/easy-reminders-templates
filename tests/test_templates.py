@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from recipe_shopper.templates import (
+from listkit.templates import (
 	TemplateLoadError,
 	find_template_by_short_name,
 	load_valid_templates_from_directory,
