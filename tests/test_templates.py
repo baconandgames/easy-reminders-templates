@@ -303,7 +303,7 @@ def test_load_valid_templates_from_directory_skips_duplicate_ids(tmp_path) -> No
 	assert any("duplicate template ID" in warning for warning in warnings)
 
 
-def test_load_valid_templates_from_directory_skips_duplicate_short_names(tmp_path) -> None:
+def test_load_valid_templates_from_directory_allows_duplicate_short_names(tmp_path) -> None:
 	templates_dir: Path = tmp_path / "templates"
 	templates_dir.mkdir()
 	(templates_dir / "packing.json").write_text(
@@ -333,6 +333,5 @@ def test_load_valid_templates_from_directory_skips_duplicate_short_names(tmp_pat
 
 	templates, warnings = load_valid_templates_from_directory(templates_dir)
 
-	assert sorted(templates) == ["packing"]
-	assert len(warnings) == 1
-	assert any("duplicate short_name" in warning for warning in warnings)
+	assert sorted(templates) == ["packing", "project"]
+	assert warnings == []

@@ -41,7 +41,7 @@ from listkit.templates import (
 	TemplateMap,
 	find_templates_by_short_name,
 	load_valid_templates_from_directory,
-	load_templates,
+	next_available_short_name,
 	template_has_on_hand_items,
 	template_uses_batch_size,
 )
@@ -355,6 +355,7 @@ class ListKitApp(App[int]):
 		self.template_suggestions_cursor_index: int = 0
 		self.template_name: str = ""
 		self.template_short_name: str = ""
+		self.created_template_path: Path | None = None
 
 	def compose(self) -> ComposeResult:
 		with Container(id="shell"):
@@ -509,11 +510,19 @@ class ListKitApp(App[int]):
 		self.replace_body(Input(value=self.template_source_target.name, placeholder="Template name", id="template-name-input"))
 		self.query_one("#template-name-input", Input).focus()
 
-	def show_template_short_name_screen(self) -> None:
-		self.view_name = "template_short_name"
-		self.set_header("Template Short Name", "Enter the short name used by listkit <short-name>.")
+	def show_template_short_name_screen(self, default_short_name: str | None = None, warning: str = "") -> None:
+		is_refreshing_screen = self.view_name == "template_short_name"
+		context = warning or "Enter the short name used by listkit <short-name>."
+		default_value = default_short_name if default_short_name is not None else slugify_template_filename(self.template_name)
+		self.set_header("Template Short Name", context)
 		self.set_footer("[ENTER create | ESC back | Ctrl-C quit]")
-		self.replace_body(Input(value=slugify_template_filename(self.template_name), placeholder="Short name", id="template-short-name-input"))
+		if is_refreshing_screen:
+			existing_input = self.query_one("#template-short-name-input", Input)
+			existing_input.value = default_value
+			existing_input.focus()
+			return
+		self.replace_body(Input(value=default_value, placeholder="Short name", id="template-short-name-input"))
+		self.view_name = "template_short_name"
 		self.query_one("#template-short-name-input", Input).focus()
 
 	def submit_template_source(self, target: DeliveryTargetOption) -> None:
@@ -643,11 +652,31 @@ class ListKitApp(App[int]):
 			self.show_template_short_name_screen()
 			self.query_one("#context", Static).update("Short name cannot be blank.")
 			return
+		available_short_name = self.next_available_template_short_name(short_name)
+		if available_short_name != short_name:
+			self.show_template_short_name_screen(
+				available_short_name,
+				f'Short name "{short_name}" unavailable. Use or edit the next available suggestion.',
+			)
+			return
 		self.template_short_name = short_name
 		if self.config.external_templates_path.strip() != "":
 			self.show_template_storage_screen()
 			return
 		self.create_template_from_list(self.templates_path)
+
+	def next_available_template_short_name(self, short_name: str) -> str:
+		used_short_names: set[str] = set()
+		for template in self.templates.values():
+			template_short_name = template.get("short_name")
+			if isinstance(template_short_name, str) and template_short_name != "":
+				used_short_names.add(template_short_name.casefold())
+		candidate = short_name
+		index = 2
+		while candidate.casefold() in used_short_names:
+			candidate = f"{short_name}-{index}"
+			index += 1
+		return candidate
 
 	def show_template_storage_screen(self) -> None:
 		self.view_name = "template_storage"
@@ -730,7 +759,7 @@ class ListKitApp(App[int]):
 		)
 		self.set_footer("[↑↓ select | ENTER confirm | ESC back | Ctrl-C quit]")
 		options: list[tuple[str, object]] = [
-			(format_template_picker_label(template_id, template), ("template", template_id))
+			(format_template_disambiguation_label(template_id, template), ("template", template_id))
 			for template_id, template in matches
 		]
 		options.append(("↩ Back", "back"))
@@ -929,17 +958,29 @@ class ListKitApp(App[int]):
 		)
 
 	def show_created_template_result(self, template_path: Path) -> None:
-		self.view_name = "result"
-		self.set_header("Template Created", "The Reminders list is now available as a ListKit template.")
-		self.set_footer("[ENTER continue | ESC back | Ctrl-C quit]")
+		self.view_name = "template_created_result"
+		self.created_template_path = template_path
+		item_count: int = len([item for item in self.template_item_names if item.strip() != ""])
+		self.set_header("Template Created", "Review the saved template, then open the JSON file or return to the main menu.")
+		self.set_footer("[↑↓ select | ENTER confirm | ESC back | Ctrl-C quit]")
+		menu = self.build_list(
+			[
+				("Open JSON File", "template_created:open_json"),
+				("Return to Main Menu", "template_created:main_menu"),
+			]
+		)
 		self.replace_body(
 			Static(
-				f"Template created: {template_path}\n\n"
-				"Edit the JSON later to add quantities, units, default batch, or on-hand settings.\n\n"
-				"See TEMPLATES.md for the template JSON guide.\n\n"
-				"Press ENTER to return to the list selection screen."
+				render_created_template_summary(
+					template_name=self.template_name,
+					template_path=template_path,
+					item_count=item_count,
+				)
 			),
+			Static(""),
+			menu,
 		)
+		menu.focus()
 
 	def show_error(self, message: str) -> None:
 		self.view_name = "error"
@@ -1756,6 +1797,16 @@ class ListKitApp(App[int]):
 			webbrowser.open(self.config_path.as_uri())
 		self.query_one("#context", Static).update("Opened config.json.")
 
+	def open_created_template_file(self) -> None:
+		if self.created_template_path is None:
+			self.query_one("#context", Static).update("Template file path is unavailable.")
+			return
+		try:
+			subprocess.run(["open", str(self.created_template_path)], check=True)
+		except (OSError, subprocess.CalledProcessError):
+			webbrowser.open(self.created_template_path.as_uri())
+		self.query_one("#context", Static).update("Opened template JSON file.")
+
 	def ensure_template_folders(self) -> None:
 		self.templates_path.mkdir(parents=True, exist_ok=True)
 		(self.templates_path / "lists").mkdir(exist_ok=True)
@@ -1879,6 +1930,10 @@ class ListKitApp(App[int]):
 			self.skip_completed_item_suggestions()
 		elif isinstance(value, tuple) and value[0] == "template_storage" and isinstance(value[1], str):
 			self.save_template_to_storage(value[1])
+		elif value == "template_created:open_json":
+			self.open_created_template_file()
+		elif value == "template_created:main_menu":
+			self.show_main_menu()
 		elif isinstance(value, tuple) and value[0] == "template" and isinstance(value[1], str):
 			template = self.templates.get(value[1])
 			if template is not None:
@@ -2031,6 +2086,8 @@ class ListKitApp(App[int]):
 			self.show_template_name_screen()
 		elif self.view_name == "template_storage":
 			self.show_template_short_name_screen()
+		elif self.view_name == "template_created_result":
+			self.show_main_menu()
 		elif self.view_name == "batch":
 			self.show_template_menu() if self.short_name is None else self.exit(130)
 		elif self.view_name == "on_hand":
@@ -2251,6 +2308,17 @@ def render_created_items_summary(created_items: list[str]) -> str:
 	return "\n".join(lines)
 
 
+def render_created_template_summary(template_name: str, template_path: Path, item_count: int) -> str:
+	item_label: str = "item" if item_count == 1 else "items"
+	return "\n".join(
+		[
+			f"Name: {template_name}",
+			f"Items: {item_count} {item_label}",
+			f"File: {template_path}",
+		]
+	)
+
+
 def format_settings_context(status: UpdateStatus) -> str:
 	if status.latest_release is not None:
 		return f"Choose what you want to configure.\nUpdate available: v{status.current_version} > v{status.latest_release.version}."
@@ -2286,16 +2354,20 @@ def is_empty_templates_error(error: TemplateLoadError) -> bool:
 
 def load_app_templates(local_path: Path, external_path: str) -> tuple[TemplateMap, str]:
 	templates: TemplateMap = {}
+	local_warnings: list[str] = []
 
 	try:
-		templates.update(load_templates(local_path))
+		local_templates, loaded_local_warnings = load_valid_templates_from_directory(local_path)
 	except TemplateLoadError as error:
 		if not is_empty_templates_error(error):
 			raise
+	else:
+		templates.update(local_templates)
+		local_warnings.extend(loaded_local_warnings)
 
 	shared_path_text = external_path.strip()
 	if shared_path_text == "":
-		return templates, ""
+		return templates, format_template_load_warnings(local_warnings)
 
 	shared_path = Path(shared_path_text).expanduser()
 	if not shared_path.exists() or not shared_path.is_dir():
@@ -2311,9 +2383,11 @@ def load_app_templates(local_path: Path, external_path: str) -> tuple[TemplateMa
 	for template_id, template in shared_templates.items():
 		templates[format_external_template_id(template_id)] = template
 
-	if len(shared_warnings) > 0:
+	if len(local_warnings) == 0 and len(shared_warnings) > 0:
 		return templates, format_shared_template_warnings(shared_warnings)
-	return templates, ""
+	if len(shared_warnings) > 0:
+		local_warnings.extend([f"Shared: {warning}" for warning in shared_warnings])
+	return templates, format_template_load_warnings(local_warnings)
 
 
 def format_external_template_id(template_id: str) -> str:
@@ -2324,6 +2398,14 @@ def format_shared_template_warnings(warnings: list[str]) -> str:
 	if len(warnings) == 1:
 		return f"Skipped 1 shared template file. {warnings[0]}"
 	return f"Skipped {len(warnings)} shared template files. Valid shared templates are still available."
+
+
+def format_template_load_warnings(warnings: list[str]) -> str:
+	if len(warnings) == 0:
+		return ""
+	if len(warnings) == 1:
+		return f"Skipped 1 template file. {warnings[0]}"
+	return f"Skipped {len(warnings)} template files. Valid templates are still available."
 
 
 def is_external_template_id(template_id: str) -> bool:
@@ -2339,6 +2421,30 @@ def format_template_picker_label(template_id: str, template: dict[str, Any]) -> 
 	if is_external_template_id(template_id):
 		return f"{name} {SHARED_TEMPLATE_LABEL_SUFFIX}"
 	return name
+
+
+def format_template_disambiguation_label(template_id: str, template: dict[str, Any]) -> str:
+	location = "[shared]" if is_external_template_id(template_id) else "[local]"
+	label = f"{template['name']} {location} ({template_item_count(template)})"
+	sample_items = template_sample_items(template)
+	if len(sample_items) == 0:
+		return f"{label} - list is empty"
+	samples = ", ".join(truncate_sample_item(item) for item in sample_items[:3])
+	return f"{label} - {samples}"
+
+
+def template_sample_items(template: dict[str, Any]) -> list[str]:
+	items = template.get("ingredients", template.get("items", []))
+	if not isinstance(items, list):
+		return []
+	sample_items: list[str] = []
+	for item in items:
+		if not isinstance(item, dict):
+			continue
+		name = item.get("name")
+		if isinstance(name, str) and name.strip() != "":
+			sample_items.append(name.strip())
+	return sample_items
 
 
 def format_template_menu_context(warning: str, load_warning: str, templates: TemplateMap) -> str:
@@ -2442,11 +2548,12 @@ def write_template_from_reminders_list(
 	target_path: Path = templates_path / "lists" if use_lists_subfolder else templates_path
 	target_path.mkdir(parents=True, exist_ok=True)
 	template_path: Path = next_available_template_path(target_path, slugify_template_filename(template_name))
+	template_short_name: str = next_available_short_name(templates_path, short_name)
 	template_data: dict[str, Any] = {
 		"schema_version": 1,
 		"type": "list",
 		"name": template_name,
-		"short_name": short_name,
+		"short_name": template_short_name,
 		"default_batch": "",
 		"items": [
 			{

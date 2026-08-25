@@ -1305,6 +1305,28 @@ def test_write_template_from_reminders_list_creates_recipe_capable_list_template
 	)
 
 
+def test_write_template_from_reminders_list_uses_available_short_name(tmp_path) -> None:
+	first_template_path = shop_script.write_template_from_reminders_list(
+		tmp_path / "templates",
+		"Ralph's",
+		"ralph-s",
+		["Milk"],
+	)
+	second_template_path = shop_script.write_template_from_reminders_list(
+		tmp_path / "templates",
+		"Ralph's",
+		"ralph-s",
+		["Eggs"],
+	)
+
+	first_template = json.loads(first_template_path.read_text(encoding="utf-8"))
+	second_template = json.loads(second_template_path.read_text(encoding="utf-8"))
+	assert first_template_path == tmp_path / "templates" / "lists" / "ralph-s.json"
+	assert second_template_path == tmp_path / "templates" / "lists" / "ralph-s-2.json"
+	assert first_template["short_name"] == "ralph-s"
+	assert second_template["short_name"] == "ralph-s-2"
+
+
 def test_create_template_from_reminders_list_can_skip_completed_item_scan(monkeypatch, tmp_path) -> None:
 	class FakeAppleRemindersTarget:
 		def list_targets(self) -> list[DeliveryTargetOption]:

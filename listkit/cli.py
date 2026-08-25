@@ -57,6 +57,7 @@ from listkit.templates import (
 	TemplateLoadError,
 	find_template_by_short_name,
 	load_templates,
+	next_available_short_name,
 	template_has_on_hand_items,
 	template_uses_batch_size,
 )
@@ -739,11 +740,12 @@ def write_template_from_reminders_list(
 	lists_path: Path = templates_path / "lists"
 	lists_path.mkdir(parents=True, exist_ok=True)
 	template_path: Path = next_available_template_path(lists_path, slugify_template_filename(template_name))
+	template_short_name: str = next_available_short_name(templates_path, short_name)
 	template_data: dict[str, Any] = {
 		"schema_version": 1,
 		"type": "list",
 		"name": template_name,
-		"short_name": short_name,
+		"short_name": template_short_name,
 		"default_batch": "",
 		"items": [
 			{

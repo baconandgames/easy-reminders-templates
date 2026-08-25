@@ -157,8 +157,8 @@ def test_duplicate_short_name_opens_disambiguation_picker(tmp_path) -> None:
 				for item in app.query_one(ListView).children
 				if isinstance(item, OptionItem)
 			]
-			assert "Local Beach" in labels
-			assert "Shared Beach (shared)" in labels
+			assert "Local Beach [local] (1) - Apples" in labels
+			assert "Shared Beach [shared] (1) - Apples" in labels
 
 	asyncio.run(run_app())
 
@@ -623,7 +623,7 @@ def test_create_template_from_list_runs_inside_app_shell(monkeypatch, tmp_path) 
 
 			await pilot.press("enter")
 			await pilot.pause()
-			assert app.view_name == "result"
+			assert app.view_name == "template_created_result"
 			assert app.result_code == 0
 
 	asyncio.run(run_app())
@@ -677,7 +677,7 @@ def test_create_template_from_list_can_scan_completed_items_without_suggestions(
 
 			await pilot.press("enter")
 			await pilot.pause()
-			assert app.view_name == "result"
+			assert app.view_name == "template_created_result"
 			assert app.result_code == 0
 
 	asyncio.run(run_app())
@@ -746,7 +746,7 @@ def test_create_template_from_list_can_add_completed_item_suggestions(monkeypatc
 			await pilot.press("enter")
 			await pilot.press("enter")
 			await pilot.pause()
-			assert app.view_name == "result"
+			assert app.view_name == "template_created_result"
 
 	asyncio.run(run_app())
 
@@ -800,7 +800,7 @@ def test_create_template_from_list_can_skip_completed_item_suggestions(monkeypat
 			await pilot.press("enter")
 			await pilot.press("enter")
 			await pilot.pause()
-			assert app.view_name == "result"
+			assert app.view_name == "template_created_result"
 
 	asyncio.run(run_app())
 
@@ -867,7 +867,7 @@ def test_create_template_from_list_handles_long_completed_item_suggestion_list(m
 			await pilot.press("enter")
 			await pilot.press("enter")
 			await pilot.pause()
-			assert app.view_name == "result"
+			assert app.view_name == "template_created_result"
 
 	asyncio.run(run_app())
 
@@ -945,7 +945,7 @@ def test_create_template_storage_can_save_locally_when_shared_folder_exists(tmp_
 			app.template_item_names = ["Socks"]
 			app.save_template_to_storage("local")
 			await pilot.pause()
-			assert app.view_name == "result"
+			assert app.view_name == "template_created_result"
 
 	asyncio.run(run_app())
 
@@ -968,13 +968,104 @@ def test_create_template_storage_can_save_to_shared_folder(tmp_path) -> None:
 			app.template_item_names = ["Socks"]
 			app.save_template_to_storage("shared")
 			await pilot.pause()
-			assert app.view_name == "result"
+			assert app.view_name == "template_created_result"
 
 	asyncio.run(run_app())
 
 	assert not (local_path / "lists" / "packing.json").exists()
 	assert (shared_path / "packing.json").exists()
 	assert not (shared_path / "lists" / "packing.json").exists()
+
+
+def test_created_template_result_shows_summary_and_actions(tmp_path) -> None:
+	template_path = tmp_path / "lists" / "packing.json"
+	template_path.parent.mkdir()
+	template_path.write_text("{}", encoding="utf-8")
+
+	async def run_app() -> None:
+		app = ListKitApp(Config(), tmp_path)
+		async with app.run_test() as pilot:
+			await pilot.pause()
+			app.template_name = "Packing"
+			app.template_item_names = ["Socks", "Charger"]
+			app.show_created_template_result(template_path)
+			await pilot.pause()
+
+			assert app.view_name == "template_created_result"
+			body_text = str(app.query_one("#body Static", app_shell.Static).content)
+			assert "Name: Packing" in body_text
+			assert "Items: 2 items" in body_text
+			assert f"File: {template_path}" in body_text
+			labels = [
+				item.label_text
+				for item in app.query_one(ListView).children
+				if isinstance(item, OptionItem)
+			]
+			assert labels == ["Open JSON File", "Return to Main Menu"]
+			body_children = list(app.query_one("#body").children)
+			assert isinstance(body_children[1], app_shell.Static)
+			assert str(body_children[1].content) == ""
+
+	asyncio.run(run_app())
+
+
+def test_created_template_result_can_open_json_file(monkeypatch, tmp_path) -> None:
+	template_path = tmp_path / "lists" / "packing.json"
+	template_path.parent.mkdir()
+	template_path.write_text("{}", encoding="utf-8")
+	opened_paths: list[str] = []
+
+	def fake_run(command, check):
+		opened_paths.append(command[1])
+
+	monkeypatch.setattr(app_shell.subprocess, "run", fake_run)
+
+	async def run_app() -> None:
+		app = ListKitApp(Config(), tmp_path)
+		async with app.run_test() as pilot:
+			await pilot.pause()
+			app.template_name = "Packing"
+			app.template_item_names = ["Socks"]
+			app.show_created_template_result(template_path)
+			await pilot.press("enter")
+			await pilot.pause()
+
+	asyncio.run(run_app())
+
+	assert opened_paths == [str(template_path)]
+
+
+def test_created_template_result_can_return_to_main_menu(tmp_path) -> None:
+	async def run_app() -> None:
+		app = ListKitApp(Config(), tmp_path)
+		async with app.run_test() as pilot:
+			await pilot.pause()
+			app.template_name = "Packing"
+			app.template_item_names = ["Socks"]
+			app.show_created_template_result(tmp_path / "lists" / "packing.json")
+			await pilot.press("down")
+			await pilot.press("enter")
+			await pilot.pause()
+
+			assert app.view_name == "main"
+
+	asyncio.run(run_app())
+
+
+def test_created_template_result_escape_returns_to_main_menu(tmp_path) -> None:
+	async def run_app() -> None:
+		app = ListKitApp(Config(), tmp_path)
+		async with app.run_test() as pilot:
+			await pilot.pause()
+			app.template_name = "Packing"
+			app.template_item_names = ["Socks"]
+			app.show_created_template_result(tmp_path / "lists" / "packing.json")
+			await pilot.press("escape")
+			await pilot.pause()
+
+			assert app.view_name == "main"
+
+	asyncio.run(run_app())
 
 
 def test_write_template_from_empty_reminders_list_creates_blank_item(tmp_path) -> None:
@@ -1007,6 +1098,79 @@ def test_write_template_from_reminders_list_can_save_to_root(tmp_path) -> None:
 
 	assert template_path == tmp_path / "packing.json"
 	assert not (tmp_path / "lists").exists()
+
+
+def test_write_template_from_reminders_list_uses_available_short_name(tmp_path) -> None:
+	first_template_path = app_shell.write_template_from_reminders_list(
+		tmp_path,
+		"Ralph's",
+		"ralph-s",
+		["Milk"],
+	)
+	second_template_path = app_shell.write_template_from_reminders_list(
+		tmp_path,
+		"Ralph's",
+		"ralph-s",
+		["Eggs"],
+	)
+
+	first_template = json.loads(first_template_path.read_text(encoding="utf-8"))
+	second_template = json.loads(second_template_path.read_text(encoding="utf-8"))
+	assert first_template_path == tmp_path / "lists" / "ralph-s.json"
+	assert second_template_path == tmp_path / "lists" / "ralph-s-2.json"
+	assert first_template["short_name"] == "ralph-s"
+	assert second_template["short_name"] == "ralph-s-2"
+
+
+def test_load_app_templates_allows_duplicate_local_short_names(tmp_path) -> None:
+	write_named_template(tmp_path, "ralph-s.json", "Ralph's", "ralph-s")
+	write_named_template(tmp_path, "ralph-s-2.json", "Ralph's", "ralph-s")
+
+	templates, warning = app_shell.load_app_templates(tmp_path, "")
+
+	assert sorted(templates) == ["ralph-s", "ralph-s-2"]
+	assert warning == ""
+
+
+def test_duplicate_local_short_name_opens_disambiguation_picker(tmp_path) -> None:
+	write_named_template(tmp_path, "ralph-s.json", "Ralph's", "ralph-s")
+	write_named_template(tmp_path, "ralph-s-2.json", "Ralph's 2", "ralph-s")
+
+	async def run_app() -> None:
+		app = ListKitApp(Config(), tmp_path, short_name="ralph-s")
+		async with app.run_test() as pilot:
+			await pilot.pause()
+			assert app.view_name == "template_short_name_disambiguation"
+			labels = [
+				item.label_text
+				for item in app.query_one(ListView).children
+				if isinstance(item, OptionItem)
+			]
+			assert "Ralph's [local] (1) - Apples" in labels
+			assert "Ralph's 2 [local] (1) - Apples" in labels
+
+	asyncio.run(run_app())
+
+
+def test_template_short_name_collision_refreshes_with_available_suggestion(tmp_path) -> None:
+	write_named_template(tmp_path, "ralph-s.json", "Ralph's", "ralph-s")
+
+	async def run_app() -> None:
+		app = ListKitApp(Config(), tmp_path)
+		async with app.run_test() as pilot:
+			await pilot.pause()
+			app.template_source_target = DeliveryTargetOption("target-id", "Ralph's", "iCloud", 0, [])
+			app.template_name = "Ralph's"
+			app.show_template_short_name_screen()
+			await pilot.pause()
+			app.submit_template_short_name("ralph-s")
+			await pilot.pause()
+
+			assert app.view_name == "template_short_name"
+			assert 'Short name "ralph-s" unavailable.' in str(app.query_one("#context", app_shell.Static).content)
+			assert app.query_one("#template-short-name-input", app_shell.Input).value == "ralph-s-2"
+
+	asyncio.run(run_app())
 
 
 def test_check_for_updates_refreshes_inline_when_current(monkeypatch, tmp_path) -> None:

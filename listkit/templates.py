@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -34,7 +35,7 @@ def load_valid_templates_from_directory(path: Path) -> tuple[TemplateMap, list[s
 	templates: TemplateMap = {}
 	template_paths: dict[str, Path] = {}
 	warnings: list[str] = []
-	for template_path in sorted(path.rglob("*.json")):
+	for template_path in sorted(path.rglob("*.json"), key=_template_path_sort_key):
 		template_id: str = template_path.stem
 		try:
 			template: Template = _read_template_file(template_path)
@@ -56,8 +57,6 @@ def load_valid_templates_from_directory(path: Path) -> tuple[TemplateMap, list[s
 	if len(templates) == 0 and len(warnings) == 0:
 		raise TemplateLoadError(f"No template JSON files found in: {path}")
 
-	short_name_warnings = _remove_duplicate_short_names(templates)
-	warnings.extend(short_name_warnings)
 	return templates, warnings
 
 
@@ -96,10 +95,32 @@ def template_has_on_hand_items(template: Template) -> bool:
 	return any(item.get("always_on_hand", False) for item in items)
 
 
+def next_available_short_name(path: Path, short_name: str) -> str:
+	base_short_name: str = short_name.strip() or "template"
+	used_short_names: set[str] = set()
+	if path.exists():
+		for template_path in path.rglob("*.json"):
+			try:
+				template: Template = _read_template_file(template_path)
+			except TemplateLoadError:
+				continue
+			template_short_name: Any = template.get("short_name")
+			if isinstance(template_short_name, str) and template_short_name != "":
+				used_short_names.add(template_short_name.casefold())
+
+	candidate: str = base_short_name
+	index: int = 2
+	while candidate.casefold() in used_short_names:
+		candidate = f"{base_short_name}-{index}"
+		index += 1
+
+	return candidate
+
+
 def _load_template_directory(path: Path) -> TemplateMap:
 	templates: TemplateMap = {}
 	template_paths: dict[str, Path] = {}
-	for template_path in sorted(path.rglob("*.json")):
+	for template_path in sorted(path.rglob("*.json"), key=_template_path_sort_key):
 		template_id: str = template_path.stem
 		template: Template = _read_template_file(template_path)
 		_validate_template(template_id, template)
@@ -145,6 +166,17 @@ def _load_legacy_template_file(path: Path) -> TemplateMap:
 
 	_validate_unique_short_names(loaded_templates)
 	return loaded_templates
+
+
+def _template_path_sort_key(path: Path) -> tuple[str, str, int, str]:
+	match = re.match(r"^(.*?)(?:-(\d+))?$", path.stem)
+	base_name: str = path.stem
+	suffix_number: int = 0
+	if match is not None:
+		base_name = match.group(1)
+		if match.group(2) is not None:
+			suffix_number = int(match.group(2))
+	return (path.parent.as_posix(), base_name, suffix_number, path.name)
 
 
 def _read_template_file(path: Path) -> Template:
@@ -236,29 +268,6 @@ def _validate_unique_short_names(templates: TemplateMap) -> None:
 			)
 
 		short_names[normalized_short_name] = (template_id, short_name)
-
-
-def _remove_duplicate_short_names(templates: TemplateMap) -> list[str]:
-	short_names: dict[str, tuple[str, str]] = {}
-	warnings: list[str] = []
-	for template_id, template in list(templates.items()):
-		short_name: Any = template.get("short_name")
-		if not isinstance(short_name, str) or short_name == "":
-			continue
-
-		normalized_short_name: str = short_name.casefold()
-		if normalized_short_name in short_names:
-			existing_template_id, existing_short_name = short_names[normalized_short_name]
-			templates.pop(template_id)
-			warnings.append(
-				f'Skipped {template_id}.json: duplicate short_name "{short_name}" conflicts with '
-				f'"{existing_template_id}" using "{existing_short_name}".'
-			)
-			continue
-
-		short_names[normalized_short_name] = (template_id, short_name)
-
-	return warnings
 
 
 def _validate_item(template_id: str, index: int, item: Any) -> None:
