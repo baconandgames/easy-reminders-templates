@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from textual.widgets import ListView
@@ -9,7 +10,7 @@ from textual.widgets import ListView
 import listkit.app_shell as app_shell
 from listkit.app_shell import ListKitApp, OptionItem
 from listkit.config import Config, load_config
-from listkit.delivery import DeliveryTargetOption
+from listkit.delivery import CompletedReminderItem, DeliveryTargetOption
 
 
 def write_template(templates_path: Path) -> None:
@@ -598,12 +599,20 @@ def test_create_template_from_list_runs_inside_app_shell(monkeypatch, tmp_path) 
 		def list_items(self, _identifier: str) -> list[str]:
 			return ["Socks", "Charger"]
 
+		def list_completed_items(self, _identifier: str, days: int | None = None) -> list[CompletedReminderItem]:
+			raise AssertionError("Completed reminders should not be scanned when skipped.")
+
 	monkeypatch.setattr(app_shell, "AppleRemindersTarget", FakeAppleRemindersTarget)
 
 	async def run_app() -> None:
 		app = ListKitApp(Config(), tmp_path)
 		async with app.run_test() as pilot:
 			app.show_create_template_source_screen()
+			await pilot.press("enter")
+			await pilot.pause()
+			assert app.view_name == "template_completed_scan"
+
+			await pilot.press("down")
 			await pilot.press("enter")
 			await pilot.pause()
 			assert app.view_name == "template_name"
@@ -624,6 +633,253 @@ def test_create_template_from_list_runs_inside_app_shell(monkeypatch, tmp_path) 
 	assert template_data["name"] == "Packing"
 	assert template_data["short_name"] == "packing"
 	assert [item["name"] for item in template_data["items"]] == ["Socks", "Charger"]
+
+
+def test_create_template_from_list_can_scan_completed_items_without_suggestions(monkeypatch, tmp_path) -> None:
+	write_template(tmp_path)
+
+	class FakeAppleRemindersTarget:
+		def list_targets(self) -> list[DeliveryTargetOption]:
+			return [
+				DeliveryTargetOption(
+					identifier="target-id",
+					name="Packing",
+					source="iCloud",
+					item_count=2,
+					sample_items=[],
+				)
+			]
+
+		def list_items(self, _identifier: str) -> list[str]:
+			return ["Socks", "Charger"]
+
+		def list_completed_items(self, _identifier: str, days: int | None = None) -> list[CompletedReminderItem]:
+			assert days == 180
+			return []
+
+	monkeypatch.setattr(app_shell, "AppleRemindersTarget", FakeAppleRemindersTarget)
+
+	async def run_app() -> None:
+		app = ListKitApp(Config(), tmp_path)
+		async with app.run_test() as pilot:
+			app.show_create_template_source_screen()
+			await pilot.press("enter")
+			await pilot.pause()
+			assert app.view_name == "template_completed_scan"
+
+			await pilot.press("enter")
+			await pilot.pause()
+			assert app.view_name == "template_name"
+
+			await pilot.press("enter")
+			await pilot.pause()
+			assert app.view_name == "template_short_name"
+
+			await pilot.press("enter")
+			await pilot.pause()
+			assert app.view_name == "result"
+			assert app.result_code == 0
+
+	asyncio.run(run_app())
+
+	template_path = tmp_path / "lists" / "packing.json"
+	template_data = json.loads(template_path.read_text(encoding="utf-8"))
+	assert template_data["name"] == "Packing"
+	assert template_data["short_name"] == "packing"
+	assert [item["name"] for item in template_data["items"]] == ["Socks", "Charger"]
+
+
+def test_create_template_from_list_can_add_completed_item_suggestions(monkeypatch, tmp_path) -> None:
+	write_template(tmp_path)
+	recent_date: str = (datetime.now(UTC) - timedelta(days=2)).isoformat().replace("+00:00", "Z")
+
+	class FakeAppleRemindersTarget:
+		def list_targets(self) -> list[DeliveryTargetOption]:
+			return [
+				DeliveryTargetOption(
+					identifier="target-id",
+					name="Groceries",
+					source="iCloud",
+					item_count=1,
+					sample_items=[],
+				)
+			]
+
+		def list_items(self, _identifier: str) -> list[str]:
+			return ["Milk"]
+
+		def list_completed_items(self, _identifier: str, days: int | None = None) -> list[CompletedReminderItem]:
+			assert days == 180
+			return [
+				CompletedReminderItem(title="Eggs", completion_date=recent_date),
+				CompletedReminderItem(title="Eggs", completion_date=recent_date),
+				CompletedReminderItem(title="Eggs", completion_date=recent_date),
+				CompletedReminderItem(title="Eggs", completion_date=recent_date),
+				CompletedReminderItem(title="Eggs", completion_date=recent_date),
+				CompletedReminderItem(title="Bread", completion_date=recent_date),
+				CompletedReminderItem(title="Bread", completion_date=recent_date),
+			]
+
+	monkeypatch.setattr(app_shell, "AppleRemindersTarget", FakeAppleRemindersTarget)
+
+	async def run_app() -> None:
+		app = ListKitApp(Config(), tmp_path)
+		async with app.run_test() as pilot:
+			app.show_create_template_source_screen()
+			await pilot.press("enter")
+			await pilot.pause()
+			assert app.view_name == "template_completed_scan"
+
+			await pilot.press("enter")
+			await pilot.pause()
+			assert app.view_name == "template_completed_suggestions"
+			context = str(app.query_one("#context", app_shell.Static).content)
+			assert "detected 2 commonly used items from completed reminders" in context
+			labels = [
+				item.label_text
+				for item in app.query_one(ListView).children
+				if isinstance(item, OptionItem)
+			]
+			assert labels == ["[x] Eggs (5)", "[ ] Bread (2)"]
+
+			await pilot.press("enter")
+			await pilot.press("enter")
+			await pilot.press("enter")
+			await pilot.pause()
+			assert app.view_name == "result"
+
+	asyncio.run(run_app())
+
+	template_path = tmp_path / "lists" / "groceries.json"
+	template_data = json.loads(template_path.read_text(encoding="utf-8"))
+	assert [item["name"] for item in template_data["items"]] == ["Milk", "Eggs"]
+
+
+def test_create_template_from_list_can_skip_completed_item_suggestions(monkeypatch, tmp_path) -> None:
+	write_template(tmp_path)
+	recent_date: str = (datetime.now(UTC) - timedelta(days=2)).isoformat().replace("+00:00", "Z")
+
+	class FakeAppleRemindersTarget:
+		def list_targets(self) -> list[DeliveryTargetOption]:
+			return [
+				DeliveryTargetOption(
+					identifier="target-id",
+					name="Groceries",
+					source="iCloud",
+					item_count=1,
+					sample_items=[],
+				)
+			]
+
+		def list_items(self, _identifier: str) -> list[str]:
+			return ["Milk"]
+
+		def list_completed_items(self, _identifier: str, days: int | None = None) -> list[CompletedReminderItem]:
+			assert days == 180
+			return [
+				CompletedReminderItem(title="Eggs", completion_date=recent_date),
+				CompletedReminderItem(title="Eggs", completion_date=recent_date),
+			]
+
+	monkeypatch.setattr(app_shell, "AppleRemindersTarget", FakeAppleRemindersTarget)
+
+	async def run_app() -> None:
+		app = ListKitApp(Config(), tmp_path)
+		async with app.run_test() as pilot:
+			app.show_create_template_source_screen()
+			await pilot.press("enter")
+			await pilot.pause()
+			assert app.view_name == "template_completed_scan"
+
+			await pilot.press("enter")
+			await pilot.pause()
+			assert app.view_name == "template_completed_suggestions"
+
+			await pilot.press("space")
+			await pilot.press("enter")
+			await pilot.press("enter")
+			await pilot.press("enter")
+			await pilot.pause()
+			assert app.view_name == "result"
+
+	asyncio.run(run_app())
+
+	template_path = tmp_path / "lists" / "groceries.json"
+	template_data = json.loads(template_path.read_text(encoding="utf-8"))
+	assert [item["name"] for item in template_data["items"]] == ["Milk"]
+
+
+def test_create_template_from_list_handles_long_completed_item_suggestion_list(monkeypatch, tmp_path) -> None:
+	write_template(tmp_path)
+	recent_date: str = (datetime.now(UTC) - timedelta(days=2)).isoformat().replace("+00:00", "Z")
+	completed_items: list[CompletedReminderItem] = []
+	for index in range(1, 59):
+		completed_items.extend(
+			[
+				CompletedReminderItem(title=f"Item {index:02d}", completion_date=recent_date),
+				CompletedReminderItem(title=f"Item {index:02d}", completion_date=recent_date),
+			]
+		)
+
+	class FakeAppleRemindersTarget:
+		def list_targets(self) -> list[DeliveryTargetOption]:
+			return [
+				DeliveryTargetOption(
+					identifier="target-id",
+					name="Groceries",
+					source="iCloud",
+					item_count=1,
+					sample_items=[],
+				)
+			]
+
+		def list_items(self, _identifier: str) -> list[str]:
+			return ["Milk"]
+
+		def list_completed_items(self, _identifier: str, days: int | None = None) -> list[CompletedReminderItem]:
+			assert days == 180
+			return completed_items
+
+	monkeypatch.setattr(app_shell, "AppleRemindersTarget", FakeAppleRemindersTarget)
+
+	async def run_app() -> None:
+		app = ListKitApp(Config(), tmp_path)
+		async with app.run_test() as pilot:
+			app.show_create_template_source_screen()
+			await pilot.press("enter")
+			await pilot.pause()
+			assert app.view_name == "template_completed_scan"
+
+			await pilot.press("enter")
+			await pilot.pause()
+			assert app.view_name == "template_completed_suggestions"
+			body = app.query_one("#body")
+			list_view = app.query_one(ListView)
+			assert len(list_view.children) == 50
+			assert list_view.region.height == body.region.height
+			assert len(app.selected_template_suggestion_indexes) == 50
+
+			await pilot.press("space")
+			for _index in range(49):
+				await pilot.press("down")
+			await pilot.press("space")
+			await pilot.press("enter")
+			await pilot.press("enter")
+			await pilot.press("enter")
+			await pilot.pause()
+			assert app.view_name == "result"
+
+	asyncio.run(run_app())
+
+	template_path = tmp_path / "lists" / "groceries.json"
+	template_data = json.loads(template_path.read_text(encoding="utf-8"))
+	item_names = [item["name"] for item in template_data["items"]]
+	assert len(item_names) == 49
+	assert "Milk" in item_names
+	assert "Item 01" not in item_names
+	assert "Item 50" not in item_names
+	assert "Item 51" not in item_names
+	assert "Item 02" in item_names
 
 
 def test_create_template_flow_prompts_for_storage_when_shared_folder_exists(monkeypatch, tmp_path) -> None:
@@ -647,12 +903,17 @@ def test_create_template_flow_prompts_for_storage_when_shared_folder_exists(monk
 		def list_items(self, _identifier: str) -> list[str]:
 			return ["Socks"]
 
+		def list_completed_items(self, _identifier: str, days: int | None = None) -> list[CompletedReminderItem]:
+			return []
+
 	monkeypatch.setattr(app_shell, "AppleRemindersTarget", FakeAppleRemindersTarget)
 
 	async def run_app() -> None:
 		app = ListKitApp(Config(external_templates_path=str(shared_path)), local_path)
 		async with app.run_test() as pilot:
 			app.show_create_template_source_screen()
+			await pilot.press("enter")
+			await pilot.press("down")
 			await pilot.press("enter")
 			await pilot.press("enter")
 			await pilot.press("enter")

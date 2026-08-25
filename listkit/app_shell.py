@@ -17,7 +17,17 @@ from textual.widgets import Input, Label, ListItem, ListView, ProgressBar, Stati
 
 from listkit.colors import HEX_COLOR_PATTERN, normalize_color
 from listkit.config import Config, save_config
-from listkit.delivery import AppleRemindersTarget, DeliveryError, DeliveryResult, DeliveryTargetOption
+from listkit.delivery import (
+	AppleRemindersTarget,
+	DeliveryError,
+	DeliveryResult,
+	DeliveryTargetOption,
+	SUGGESTED_COMPLETED_REMINDER_LOOKBACK_DAYS,
+	SuggestedReminderItem,
+	default_completed_reminder_suggestion_indexes,
+	format_completed_reminder_suggestion,
+	suggest_completed_reminder_items,
+)
 from listkit.formatter import (
 	ColorScheme,
 	ShoppingList,
@@ -150,6 +160,13 @@ class WrappingListView(ListView):
 			item = self.children[index]
 			if isinstance(item, OptionItem) and item.selectable and item.label_text.strip():
 				self.index = index
+				self.scroll_to_widget(
+					item,
+					animate=False,
+					immediate=True,
+					force=True,
+					origin_visible=False,
+				)
 				return
 
 
@@ -166,6 +183,21 @@ class IngredientListView(WrappingListView):
 
 	def action_continue_items(self) -> None:
 		self.app.continue_from_ingredients(self.index)  # type: ignore[attr-defined]
+
+
+class SuggestionListView(WrappingListView):
+	BINDINGS = [
+		("up", "cursor_up", "Cursor up"),
+		("down", "cursor_down", "Cursor down"),
+		("space", "toggle_cursor_item", "Toggle item"),
+		("enter", "continue_suggestions", "Continue"),
+	]
+
+	def action_toggle_cursor_item(self) -> None:
+		self.app.toggle_current_suggestion(self.index)  # type: ignore[attr-defined]
+
+	def action_continue_suggestions(self) -> None:
+		self.app.continue_from_suggestions(self.index)  # type: ignore[attr-defined]
 
 
 class ConfigListVisibilityView(WrappingListView):
@@ -232,8 +264,7 @@ class ListKitApp(App[int]):
 	}
 
 	ListView {
-		height: auto;
-		max-height: 24;
+		height: 100%;
 		width: 100%;
 		background: #050505;
 	}
@@ -319,6 +350,9 @@ class ListKitApp(App[int]):
 		self.suppress_input_until: float = 0.0
 		self.template_source_target: DeliveryTargetOption | None = None
 		self.template_item_names: list[str] = []
+		self.template_suggested_items: list[SuggestedReminderItem] = []
+		self.selected_template_suggestion_indexes: set[int] = set()
+		self.template_suggestions_cursor_index: int = 0
 		self.template_name: str = ""
 		self.template_short_name: str = ""
 
@@ -484,11 +518,114 @@ class ListKitApp(App[int]):
 
 	def submit_template_source(self, target: DeliveryTargetOption) -> None:
 		self.template_source_target = target
+		reminders = AppleRemindersTarget()
 		try:
-			self.template_item_names = AppleRemindersTarget().list_items(target.identifier)
+			self.template_item_names = reminders.list_items(target.identifier)
 		except DeliveryError as error:
 			self.show_error(str(error))
 			return
+		self.show_completed_item_scan_screen()
+
+	def show_completed_item_scan_screen(self) -> None:
+		self.view_name = "template_completed_scan"
+		self.set_header(
+			"Scan Completed Reminders?",
+			"ListKit can scan completed reminders from this list to detect commonly used items that are not currently on the list.",
+		)
+		self.set_footer("[↑↓ select | ENTER confirm | ESC back | Ctrl-C quit]")
+		menu = self.build_list(
+			[
+				("Scan Completed Reminders", "template_completed_scan:yes"),
+				("Skip Completed Reminders", "template_completed_scan:no"),
+			]
+		)
+		self.replace_body(menu)
+		menu.focus()
+
+	def scan_completed_item_suggestions(self) -> None:
+		assert self.template_source_target is not None
+		reminders = AppleRemindersTarget()
+		try:
+			completed_items = reminders.list_completed_items(
+				self.template_source_target.identifier,
+				days=SUGGESTED_COMPLETED_REMINDER_LOOKBACK_DAYS,
+			)
+		except DeliveryError:
+			completed_items = []
+		suggestions: list[SuggestedReminderItem] = suggest_completed_reminder_items(
+			completed_items,
+			self.template_item_names,
+		)
+		self.template_suggested_items = suggestions
+		if len(self.template_suggested_items) > 0:
+			self.selected_template_suggestion_indexes = default_completed_reminder_suggestion_indexes(suggestions)
+			self.template_suggestions_cursor_index = 0
+			self.show_completed_item_suggestions_screen()
+			return
+		self.show_template_name_screen()
+
+	def skip_completed_item_suggestions(self) -> None:
+		self.template_suggested_items = []
+		self.selected_template_suggestion_indexes = set()
+		self.template_suggestions_cursor_index = 0
+		self.show_template_name_screen()
+
+	def show_completed_item_suggestions_screen(self) -> None:
+		self.view_name = "template_completed_suggestions"
+		suggestion_count: int = len(self.template_suggested_items)
+		self.set_header(
+			"Review Suggested Items",
+			f"ListKit detected {suggestion_count} commonly used item{'s' if suggestion_count != 1 else ''} from completed reminders. "
+			f"Select repeated item{'s' if suggestion_count != 1 else ''} to include in this template.",
+		)
+		self.set_footer("[↑↓ select | SPACE toggle | ENTER continue | ESC back | Ctrl-C quit]")
+		options: list[tuple[str, object]] = [
+			(self.format_template_suggestion_option(index, suggestion), ("toggle_template_suggestion", index))
+			for index, suggestion in enumerate(self.template_suggested_items)
+		]
+		menu = self.build_list(
+			options,
+			default_index=self.template_suggestions_cursor_index,
+			list_type=SuggestionListView,
+		)
+		self.replace_body(menu)
+		menu.focus()
+
+	def format_template_suggestion_option(self, index: int, suggestion: SuggestedReminderItem) -> str:
+		state = "[x]" if index in self.selected_template_suggestion_indexes else "[ ]"
+		return f"{state} {format_completed_reminder_suggestion(suggestion)}"
+
+	def toggle_current_suggestion(self, cursor_index: int | None) -> None:
+		if self.view_name != "template_completed_suggestions":
+			return
+		if cursor_index is None:
+			return
+		self.template_suggestions_cursor_index = cursor_index
+		list_view = self.query_one(ListView)
+		item = list_view.children[cursor_index]
+		if not isinstance(item, OptionItem):
+			return
+		value = item.value
+		if not (isinstance(value, tuple) and value[0] == "toggle_template_suggestion" and isinstance(value[1], int)):
+			return
+		suggestion_index = value[1]
+		if suggestion_index in self.selected_template_suggestion_indexes:
+			self.selected_template_suggestion_indexes.discard(suggestion_index)
+		else:
+			self.selected_template_suggestion_indexes.add(suggestion_index)
+		item.set_label(self.format_template_suggestion_option(suggestion_index, self.template_suggested_items[suggestion_index]))
+
+	def continue_from_suggestions(self, cursor_index: int | None) -> None:
+		if self.view_name != "template_completed_suggestions":
+			return
+		if cursor_index is not None:
+			self.template_suggestions_cursor_index = cursor_index
+		existing_names: set[str] = {item.casefold() for item in self.template_item_names}
+		for index, suggestion in enumerate(self.template_suggested_items):
+			item_name = suggestion.title
+			if index in self.selected_template_suggestion_indexes and item_name.casefold() not in existing_names:
+				self.template_item_names.append(item_name)
+				existing_names.add(item_name.casefold())
 		self.show_template_name_screen()
 
 	def submit_template_name(self, value: str) -> None:
@@ -1699,6 +1836,10 @@ class ListKitApp(App[int]):
 			self.items_cursor_index = event.list_view.index or 0
 			self.toggle_ingredient_item(item, value[1])
 			return
+		if isinstance(value, tuple) and value[0] == "toggle_template_suggestion" and isinstance(value[1], int):
+			self.template_suggestions_cursor_index = event.list_view.index or 0
+			self.toggle_current_suggestion(event.list_view.index)
+			return
 		self.handle_action(value)
 
 	def handle_action(self, value: object) -> None:
@@ -1732,6 +1873,10 @@ class ListKitApp(App[int]):
 				self.create_reminders()
 		elif isinstance(value, tuple) and value[0] == "template_source" and isinstance(value[1], DeliveryTargetOption):
 			self.submit_template_source(value[1])
+		elif value == "template_completed_scan:yes":
+			self.scan_completed_item_suggestions()
+		elif value == "template_completed_scan:no":
+			self.skip_completed_item_suggestions()
 		elif isinstance(value, tuple) and value[0] == "template_storage" and isinstance(value[1], str):
 			self.save_template_to_storage(value[1])
 		elif isinstance(value, tuple) and value[0] == "template" and isinstance(value[1], str):
@@ -1876,8 +2021,12 @@ class ListKitApp(App[int]):
 			self.show_template_menu() if self.short_name is None else self.exit(130)
 		elif self.view_name == "template_source":
 			self.show_main_menu()
-		elif self.view_name == "template_name":
+		elif self.view_name == "template_completed_scan":
 			self.show_create_template_source_screen()
+		elif self.view_name == "template_completed_suggestions":
+			self.show_completed_item_scan_screen()
+		elif self.view_name == "template_name":
+			self.show_completed_item_scan_screen()
 		elif self.view_name == "template_short_name":
 			self.show_template_name_screen()
 		elif self.view_name == "template_storage":

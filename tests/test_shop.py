@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 import listkit.cli as shop_script
 import listkit.app_shell as app_shell
 from listkit.config import Config, load_config
@@ -1301,6 +1303,48 @@ def test_write_template_from_reminders_list_creates_recipe_capable_list_template
 		'  ]\n'
 		'}\n'
 	)
+
+
+def test_create_template_from_reminders_list_can_skip_completed_item_scan(monkeypatch, tmp_path) -> None:
+	class FakeAppleRemindersTarget:
+		def list_targets(self) -> list[DeliveryTargetOption]:
+			return [
+				DeliveryTargetOption(
+					identifier="list-1",
+					name="Groceries",
+					source="iCloud",
+					item_count=1,
+					sample_items=[],
+				)
+			]
+
+		def list_items(self, _identifier: str) -> list[str]:
+			return ["Milk"]
+
+		def list_completed_items(self, _identifier: str, days: int | None = None):
+			raise AssertionError("Completed reminders should not be scanned when skipped.")
+
+	monkeypatch.setattr(shop_script, "AppleRemindersTarget", FakeAppleRemindersTarget)
+	monkeypatch.setattr(
+		shop_script,
+		"select_delivery_target",
+		lambda *_args, **_kwargs: DeliveryTargetOption(
+			identifier="list-1",
+			name="Groceries",
+			source="iCloud",
+			item_count=1,
+			sample_items=[],
+		),
+	)
+	monkeypatch.setattr(shop_script, "prompt_for_completed_item_scan", lambda **_kwargs: False)
+	monkeypatch.setattr(shop_script, "prompt_for_template_name", lambda *_args, **_kwargs: "Groceries")
+	monkeypatch.setattr(shop_script, "prompt_for_template_short_name", lambda *_args, **_kwargs: "groceries")
+
+	template_path = shop_script.create_template_from_reminders_list(tmp_path / "templates", Config())
+
+	assert template_path == tmp_path / "templates" / "lists" / "groceries.json"
+	template_data = json.loads(template_path.read_text(encoding="utf-8"))
+	assert [item["name"] for item in template_data["items"]] == ["Milk"]
 
 
 def test_next_available_template_path_avoids_overwriting_existing_template(tmp_path) -> None:

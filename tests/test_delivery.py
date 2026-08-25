@@ -2,9 +2,19 @@ from __future__ import annotations
 
 import json
 import subprocess
+from datetime import UTC, datetime, timedelta
 
 from listkit.config import Config
-from listkit.delivery import AppleRemindersTarget, DeliveryError, DeliveryTargetOption, get_delivery_target
+from listkit.delivery import (
+	AppleRemindersTarget,
+	CompletedReminderItem,
+	DeliveryError,
+	DeliveryTargetOption,
+	default_completed_reminder_suggestion_indexes,
+	format_completed_reminder_suggestion,
+	get_delivery_target,
+	suggest_completed_reminder_items,
+)
 from listkit.formatter import build_shopping_list
 
 
@@ -139,6 +149,111 @@ def test_apple_reminders_target_lists_items() -> None:
 	assert calls[0]["check"] is True
 	assert calls[0]["capture_output"] is True
 	assert calls[0]["text"] is True
+
+
+def test_apple_reminders_target_lists_completed_items() -> None:
+	calls = []
+
+	def fake_runner(args, input, check, capture_output, text):
+		calls.append(
+			{
+				"args": args,
+				"input": input,
+				"check": check,
+				"capture_output": capture_output,
+				"text": text,
+			}
+		)
+		return subprocess.CompletedProcess(
+			args,
+			0,
+			stdout=json.dumps(
+				[
+					{"title": "Milk", "completion_date": "2026-08-20T10:00:00Z"},
+					{"title": "Eggs", "completion_date": None},
+				]
+			),
+			stderr="",
+		)
+
+	items = AppleRemindersTarget(runner=fake_runner).list_completed_items("list-1", days=180)
+
+	assert items == [
+		CompletedReminderItem(title="Milk", completion_date="2026-08-20T10:00:00Z"),
+		CompletedReminderItem(title="Eggs", completion_date=None),
+	]
+	assert calls[0]["args"][2] == "list-completed-items"
+	assert json.loads(calls[0]["input"]) == {"listIdentifier": "list-1", "days": 180}
+	assert calls[0]["check"] is True
+	assert calls[0]["capture_output"] is True
+	assert calls[0]["text"] is True
+
+
+def test_suggest_completed_reminder_items_ranks_repeated_recent_items() -> None:
+	recent_date: str = (datetime.now(UTC) - timedelta(days=2)).isoformat().replace("+00:00", "Z")
+	older_date: str = (datetime.now(UTC) - timedelta(days=60)).isoformat().replace("+00:00", "Z")
+	completed_items = [
+		CompletedReminderItem(title="Milk", completion_date=older_date),
+		CompletedReminderItem(title=" milk ", completion_date=recent_date),
+		CompletedReminderItem(title="Bananas", completion_date=older_date),
+		CompletedReminderItem(title="Bananas", completion_date=older_date),
+		CompletedReminderItem(title="Eggs", completion_date=recent_date),
+		CompletedReminderItem(title="Eggs", completion_date=recent_date),
+		CompletedReminderItem(title="Bread", completion_date=recent_date),
+	]
+
+	suggestions = suggest_completed_reminder_items(completed_items, existing_items=["milk"])
+
+	assert [suggestion.title for suggestion in suggestions] == ["Eggs", "Bananas"]
+	assert suggestions[0].frequency == 2
+	assert suggestions[0].recent_count == 2
+	assert suggestions[0].score == 4.0
+	assert suggestions[1].frequency == 2
+	assert suggestions[1].recent_count == 0
+	assert suggestions[1].score == 2.0
+
+
+def test_completed_reminder_suggestion_label_includes_frequency() -> None:
+	suggestion = suggest_completed_reminder_items(
+		[
+			CompletedReminderItem(title="Eggs", completion_date=None),
+			CompletedReminderItem(title="Eggs", completion_date=None),
+		],
+		existing_items=[],
+	)[0]
+
+	assert format_completed_reminder_suggestion(suggestion) == "Eggs (2)"
+
+
+def test_default_completed_reminder_suggestions_are_checked_on_frequency_curve() -> None:
+	suggestions = suggest_completed_reminder_items(
+		[
+			CompletedReminderItem(title="Eggs", completion_date=None),
+			CompletedReminderItem(title="Eggs", completion_date=None),
+			CompletedReminderItem(title="Eggs", completion_date=None),
+			CompletedReminderItem(title="Eggs", completion_date=None),
+			CompletedReminderItem(title="Eggs", completion_date=None),
+			CompletedReminderItem(title="Bread", completion_date=None),
+			CompletedReminderItem(title="Bread", completion_date=None),
+		],
+		existing_items=[],
+	)
+
+	assert [suggestion.title for suggestion in suggestions] == ["Eggs", "Bread"]
+	assert default_completed_reminder_suggestion_indexes(suggestions) == {0}
+
+
+def test_suggest_completed_reminder_items_limits_results_after_ranking() -> None:
+	completed_items: list[CompletedReminderItem] = []
+	for index in range(60):
+		for _repeat in range(60 - index):
+			completed_items.append(CompletedReminderItem(title=f"Item {index:02d}", completion_date=None))
+
+	suggestions = suggest_completed_reminder_items(completed_items, existing_items=[])
+
+	assert len(suggestions) == 50
+	assert suggestions[0].title == "Item 00"
+	assert suggestions[-1].title == "Item 49"
 
 
 def test_apple_reminders_target_uses_configured_list_id_after_listing_targets() -> None:

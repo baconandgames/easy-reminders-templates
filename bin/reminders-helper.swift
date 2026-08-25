@@ -7,6 +7,21 @@ struct CreatePayload: Decodable {
 	let items: [String]
 }
 
+struct ListCompletedPayload: Decodable {
+	let listIdentifier: String
+	let days: Int?
+}
+
+struct CompletedReminderItem: Encodable {
+	let title: String
+	let completionDate: String?
+
+	enum CodingKeys: String, CodingKey {
+		case title
+		case completionDate = "completion_date"
+	}
+}
+
 struct ReminderTarget: Encodable {
 	let id: String
 	let name: String
@@ -95,6 +110,41 @@ func incompleteReminderTitles(in store: EKEventStore, calendar: EKCalendar) -> [
 	return titles
 }
 
+func completedReminderItems(in store: EKEventStore, calendar: EKCalendar, days: Int?) -> [CompletedReminderItem] {
+	let semaphore = DispatchSemaphore(value: 0)
+	let startDate: Date?
+	if let days, days > 0 {
+		startDate = Calendar.current.date(byAdding: .day, value: -days, to: Date())
+	} else {
+		startDate = nil
+	}
+	let predicate = store.predicateForCompletedReminders(
+		withCompletionDateStarting: startDate,
+		ending: nil,
+		calendars: [calendar]
+	)
+	let dateFormatter = ISO8601DateFormatter()
+	var items: [CompletedReminderItem] = []
+
+	store.fetchReminders(matching: predicate) { reminders in
+		items = (reminders ?? [])
+			.compactMap { reminder in
+				guard let title = reminder.title?.trimmingCharacters(in: .whitespacesAndNewlines), !title.isEmpty else {
+					return nil
+				}
+				let completionDate = reminder.completionDate.map { dateFormatter.string(from: $0) }
+				return CompletedReminderItem(title: title, completionDate: completionDate)
+			}
+			.sorted { lhs, rhs in
+				(lhs.completionDate ?? "") > (rhs.completionDate ?? "")
+			}
+		semaphore.signal()
+	}
+
+	semaphore.wait()
+	return items
+}
+
 func listTargets(in store: EKEventStore) {
 	let targets = reminderCalendars(in: store).map { calendar in
 		let titles = incompleteReminderTitles(in: store, calendar: calendar)
@@ -139,6 +189,37 @@ func listItems(in store: EKEventStore) {
 		print(output)
 	} catch {
 		fail("Could not encode reminder items: \(error.localizedDescription)")
+	}
+}
+
+func listCompletedItems(in store: EKEventStore) {
+	let input = FileHandle.standardInput.readDataToEndOfFile()
+	let payload: ListCompletedPayload
+
+	do {
+		payload = try JSONDecoder().decode(ListCompletedPayload.self, from: input)
+	} catch {
+		fail("Invalid completed reminder payload: \(error.localizedDescription)")
+	}
+
+	guard !payload.listIdentifier.isEmpty else {
+		fail("Reminder list identifier must not be empty.")
+	}
+
+	guard let calendar = reminderCalendars(in: store).first(where: { $0.calendarIdentifier == payload.listIdentifier }) else {
+		fail("Reminder list not found: \(payload.listIdentifier)")
+	}
+
+	let items = completedReminderItems(in: store, calendar: calendar, days: payload.days)
+
+	do {
+		let data = try JSONEncoder().encode(items)
+		guard let output = String(data: data, encoding: .utf8) else {
+			fail("Could not encode completed reminder items.")
+		}
+		print(output)
+	} catch {
+		fail("Could not encode completed reminder items: \(error.localizedDescription)")
 	}
 }
 
@@ -217,7 +298,7 @@ func createReminders(in store: EKEventStore) {
 
 let arguments = CommandLine.arguments
 guard arguments.count == 2 else {
-	fail("Usage: reminders-helper.swift <list-reminders|list-targets|list-items|create-list|create-reminders>")
+	fail("Usage: reminders-helper.swift <list-reminders|list-targets|list-items|list-completed-items|create-list|create-reminders>")
 }
 
 let store = EKEventStore()
@@ -230,6 +311,8 @@ case "list-targets":
 	listTargets(in: store)
 case "list-items":
 	listItems(in: store)
+case "list-completed-items":
+	listCompletedItems(in: store)
 case "create-list":
 	createList(in: store)
 case "create-reminders":

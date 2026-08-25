@@ -36,6 +36,11 @@ from listkit.delivery import (
 	DeliveryError,
 	DeliveryResult,
 	DeliveryTargetOption,
+	SUGGESTED_COMPLETED_REMINDER_LOOKBACK_DAYS,
+	SuggestedReminderItem,
+	default_completed_reminder_suggestion_indexes,
+	format_completed_reminder_suggestion,
+	suggest_completed_reminder_items,
 )
 from listkit.formatter import (
 	ColorScheme,
@@ -611,6 +616,17 @@ def create_template_from_reminders_list(
 		return None
 
 	item_names: list[str] = reminders.list_items(selected_target.identifier)
+	if prompt_for_completed_item_scan(prompt_style=prompt_style):
+		try:
+			completed_items = reminders.list_completed_items(
+				selected_target.identifier,
+				days=SUGGESTED_COMPLETED_REMINDER_LOOKBACK_DAYS,
+			)
+		except DeliveryError:
+			completed_items = []
+		suggestions: list[SuggestedReminderItem] = suggest_completed_reminder_items(completed_items, item_names)
+		if len(suggestions) > 0:
+			item_names.extend(prompt_for_completed_item_suggestions(suggestions, prompt_style=prompt_style))
 	template_name: str | None = prompt_for_template_name(selected_target.name, prompt_style=prompt_style)
 	if template_name is None:
 		return None
@@ -643,6 +659,59 @@ def prompt_for_template_name(default_name: str, prompt_style=None) -> str | None
 		return None
 
 	return require_selection(selection).strip()
+
+
+def prompt_for_completed_item_scan(prompt_style=None) -> bool:
+	selection = questionary.select(
+		"",
+		choices=[
+			questionary.Choice(title="Scan Completed Reminders", value=True),
+			questionary.Choice(title="Skip Completed Reminders", value=False),
+			back_config_choice(),
+		],
+		instruction=format_prompt_instruction(
+			"ListKit can scan completed reminders from this list to detect commonly used items that are not currently on the list.",
+			"[ENTER to choose | ESC to skip | Ctrl-C to quit]",
+		),
+		pointer=">",
+		qmark="Scan Completed Reminders?",
+		style=prompt_style,
+	)
+	bind_escape_value(selection, BACK_CONFIG_CHOICE)
+	result = ask_or_abort(selection)
+	if result == BACK_CONFIG_CHOICE:
+		return False
+
+	return bool(require_selection(result))
+
+
+def prompt_for_completed_item_suggestions(suggestions: list[SuggestedReminderItem], prompt_style=None) -> list[str]:
+	default_indexes: set[int] = default_completed_reminder_suggestion_indexes(suggestions)
+	selection = questionary.checkbox(
+		"",
+		choices=[
+			questionary.Choice(
+				title=format_completed_reminder_suggestion(suggestion),
+				value=suggestion.title,
+				checked=index in default_indexes,
+			)
+			for index, suggestion in enumerate(suggestions)
+		],
+		instruction=format_prompt_instruction(
+			f"ListKit detected {len(suggestions)} commonly used item{'s' if len(suggestions) != 1 else ''} from completed reminders. "
+			f"Select repeated item{'s' if len(suggestions) != 1 else ''} to include in this template.",
+			"[SPACE to toggle | ENTER to continue | ESC to skip | Ctrl-C to quit]",
+		),
+		pointer=">",
+		qmark="Suggested Items",
+		style=prompt_style,
+	)
+	bind_escape_value(selection, BACK_CONFIG_CHOICE)
+	result = ask_or_abort(selection)
+	if result == BACK_CONFIG_CHOICE:
+		return []
+
+	return [str(item) for item in require_selection(result)]
 
 
 def prompt_for_template_short_name(template_name: str, prompt_style=None) -> str | None:
