@@ -46,9 +46,10 @@ template format are skipped, and ListKit will show a warning while still loading
 valid local and shared templates.
 
 Local and shared templates may use the same filename; the shared copy appears as
-a separate `(shared)` template. Within the shared folder, avoid duplicate
-filenames and duplicate short names. If the same short name exists locally and
-in the shared folder, `listkit <short-name>` will ask which template to use.
+a separate `(shared)` template. Within each folder, avoid duplicate filenames.
+Duplicate short names are allowed, but they are best kept rare. If the same
+short name matches more than one template, `listkit <short-name>` will ask which
+template to use and show whether each match is local or shared.
 
 When a shared folder is configured, **Create Template from List** asks whether
 to save the new template locally or in the shared folder. Choose local while you
@@ -150,7 +151,7 @@ listkit beach
 | `schema_version` | Recommended | Template | Use `1`. Reserved for future migrations. |
 | `type` | Yes | Template | Must be `"recipe"` or `"list"`. |
 | `name` | Yes | Template | Display name shown in ListKit. |
-| `short_name` | No | Template | Optional command shortcut, such as `chili` for `listkit chili`. Non-empty short names must be unique case-insensitively and cannot use reserved commands such as `config`, `settings`, `help`, `version`, `q`, `quit`, or `cancel`. |
+| `short_name` | No | Template | Optional command shortcut, such as `chili` for `listkit chili`. Short names do not have to be unique, but duplicate matches require a picker when running `listkit <short-name>`. Non-empty short names cannot use reserved commands such as `config`, `settings`, `help`, `version`, `q`, `quit`, or `cancel`. |
 | `default_batch` | No | Template | Positive number used as the default batch size. Leave blank or omit it to skip the batch-size prompt. |
 | `items` | Yes | Template | Array of items to add to Reminders. |
 | `name` | Yes | Item | Item name shown in ListKit and sent to Reminders. A blank string is allowed as an editable placeholder, but blank items are ignored when running a template. |
@@ -243,8 +244,8 @@ That renders as `3 Apples`.
 - JSON files cannot contain comments.
 - Use descriptive filenames, such as `beach-day.json` or `classic-chili.json`.
 - Avoid duplicate filenames, even when files are in different subfolders.
-- Use unique `short_name` values; `Chili` and `chili` are treated as the same
-  shortcut.
+- Prefer unique `short_name` values for shortcuts you use often; `Chili` and
+  `chili` are treated as the same shortcut.
 - Keep item names singular when using quantities without units, where possible.
 - Keep unit names singular. ListKit handles simple pluralization in terminal
   output and Reminders item names.
@@ -263,8 +264,14 @@ Then choose:
 Create Template from List
 ```
 
-ListKit will ask which Apple Reminders list to import, then ask for a template
-name and short name. It creates a new JSON file under `templates/`.
+ListKit will ask which Apple Reminders list to import. If the list has completed
+reminders, ListKit can scan recent completed items and show repeated items as
+optional additions before asking for a template name and short name. It creates
+a new JSON file under `templates/`.
+
+When the entered short name is already used by another template, ListKit keeps
+you on the short-name screen, shows `Short name "..." unavailable.`, and fills in
+the next available suggestion so you can accept or edit it before saving.
 
 If an external template folder is configured in **Manage Sharing
 (Experimental)**, ListKit will also ask whether to save the new template locally
@@ -272,6 +279,10 @@ or in the shared folder.
 
 Generated templates include blank `default_batch`, `quantity`, and `unit` fields
 so they can be edited into recipe-style templates later.
+
+After saving, ListKit shows a short summary with the template name, item count,
+and JSON path. From there, you can open the JSON file immediately or return to
+the main menu.
 
 You can also create a template from an empty Reminders list. This creates a
 shell JSON file with one blank item placeholder, which is useful when you want

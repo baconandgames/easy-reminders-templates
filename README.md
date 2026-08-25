@@ -225,8 +225,10 @@ templates/
 ```
 
 Subfolders are allowed for organization, but template IDs come from filenames,
-not folders. Duplicate filenames and duplicate non-empty short names are not
-allowed.
+not folders. Duplicate filenames are not allowed. If multiple templates share a
+short name, `listkit <short-name>` asks which one to use; when creating a
+template from a Reminders list, ListKit suggests the next available short name
+before saving.
 
 See [TEMPLATES.md](TEMPLATES.md) for the full JSON template guide, including
 examples, field descriptions, blank-value behavior, and how to create a template
@@ -272,6 +274,11 @@ save it locally or in the shared folder if sharing is configured. Choose local
 for private or unfinished templates. Choose shared when the template is ready
 for everyone using that folder. Shared templates are saved directly in the
 folder you selected, so reconnect to that same folder later.
+
+During template creation, ListKit can also scan completed reminders from the
+source list and show repeated completed items as optional additions. The saved
+summary screen lets you open the new JSON file immediately or return to the
+main menu.
 
 Use a dedicated shared folder with valid ListKit template JSON files. Non-JSON
 files are ignored. Invalid shared JSON files are skipped with a warning so the
