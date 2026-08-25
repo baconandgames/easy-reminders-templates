@@ -617,6 +617,8 @@ def test_create_template_from_list_runs_inside_app_shell(monkeypatch, tmp_path) 
 			await pilot.press("down")
 			await pilot.press("enter")
 			await pilot.pause()
+			assert app.view_name in {"template_completed_scan_running", "template_name"}
+			await pilot.pause()
 			assert app.view_name == "template_name"
 
 			await pilot.press("enter")
@@ -778,6 +780,8 @@ def test_create_template_from_list_can_add_completed_item_suggestions(monkeypatc
 
 			await pilot.press("enter")
 			await pilot.pause()
+			assert app.view_name in {"template_completed_scan_running", "template_completed_suggestions"}
+			await pilot.pause()
 			assert app.view_name == "template_completed_suggestions"
 			context = str(app.query_one("#context", app_shell.Static).content)
 			assert "detected 2 commonly used items from completed reminders" in context
@@ -799,6 +803,44 @@ def test_create_template_from_list_can_add_completed_item_suggestions(monkeypatc
 	template_path = tmp_path / "lists" / "groceries.json"
 	template_data = json.loads(template_path.read_text(encoding="utf-8"))
 	assert [item["name"] for item in template_data["items"]] == ["Milk", "Eggs"]
+
+
+def test_completed_item_scan_shows_running_state(monkeypatch, tmp_path) -> None:
+	started = threading.Event()
+	release = threading.Event()
+	recent_date: str = (datetime.now(UTC) - timedelta(days=2)).isoformat().replace("+00:00", "Z")
+
+	class FakeAppleRemindersTarget:
+		def list_completed_items(self, _identifier: str, days: int | None = None) -> list[CompletedReminderItem]:
+			assert days == 180
+			started.set()
+			release.wait(timeout=5)
+			return [
+				CompletedReminderItem(title="Eggs", completion_date=recent_date),
+				CompletedReminderItem(title="Eggs", completion_date=recent_date),
+			]
+
+	monkeypatch.setattr(app_shell, "AppleRemindersTarget", FakeAppleRemindersTarget)
+
+	async def run_app() -> None:
+		app = ListKitApp(Config(), tmp_path)
+		async with app.run_test() as pilot:
+			await pilot.pause()
+			app.template_source_target = DeliveryTargetOption("target-id", "Groceries", "iCloud", -1, [])
+			app.template_item_names = ["Milk"]
+			app.scan_completed_item_suggestions()
+			await pilot.pause()
+
+			assert started.wait(timeout=1)
+			assert app.view_name == "template_completed_scan_running"
+			assert "Looking for repeated completed items" in str(app.query_one("#context", app_shell.Static).content)
+			assert "Scanning completed reminders..." in str(app.query_one("#body Static", app_shell.Static).content)
+
+			release.set()
+			await pilot.pause()
+			assert app.view_name == "template_completed_suggestions"
+
+	asyncio.run(run_app())
 
 
 def test_create_template_from_list_can_skip_completed_item_suggestions(monkeypatch, tmp_path) -> None:
@@ -839,6 +881,8 @@ def test_create_template_from_list_can_skip_completed_item_suggestions(monkeypat
 			assert app.view_name == "template_completed_scan"
 
 			await pilot.press("enter")
+			await pilot.pause()
+			assert app.view_name in {"template_completed_scan_running", "template_completed_suggestions"}
 			await pilot.pause()
 			assert app.view_name == "template_completed_suggestions"
 
@@ -899,6 +943,8 @@ def test_create_template_from_list_handles_long_completed_item_suggestion_list(m
 			assert app.view_name == "template_completed_scan"
 
 			await pilot.press("enter")
+			await pilot.pause()
+			assert app.view_name in {"template_completed_scan_running", "template_completed_suggestions"}
 			await pilot.pause()
 			assert app.view_name == "template_completed_suggestions"
 			body = app.query_one("#body")

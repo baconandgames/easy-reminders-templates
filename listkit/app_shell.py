@@ -347,6 +347,7 @@ class ListKitApp(App[int]):
 		self.update_worker: Worker | None = None
 		self.launch_update_worker: Worker | None = None
 		self.template_source_worker: Worker | None = None
+		self.completed_item_scan_worker: Worker | None = None
 		self.reminders_operation_running: bool = False
 		self.suppress_input_until: float = 0.0
 		self.template_source_target: DeliveryTargetOption | None = None
@@ -569,18 +570,35 @@ class ListKitApp(App[int]):
 
 	def scan_completed_item_suggestions(self) -> None:
 		assert self.template_source_target is not None
+		self.view_name = "template_completed_scan_running"
+		self.set_header("Scanning Completed Reminders", "Looking for repeated completed items from this Reminders list.")
+		self.set_footer("[Ctrl-C quit]")
+		self.replace_body(
+			Static("Scanning completed reminders..."),
+			ProgressBar(total=None, show_percentage=False, show_eta=False),
+		)
+		self.completed_item_scan_worker = self.run_worker(
+			self.load_completed_item_suggestions,
+			name="completed-item-suggestions",
+			thread=True,
+		)
+
+	def load_completed_item_suggestions(self) -> list[SuggestedReminderItem] | DeliveryError:
+		assert self.template_source_target is not None
 		reminders = AppleRemindersTarget()
 		try:
 			completed_items = reminders.list_completed_items(
 				self.template_source_target.identifier,
 				days=SUGGESTED_COMPLETED_REMINDER_LOOKBACK_DAYS,
 			)
-		except DeliveryError:
-			completed_items = []
-		suggestions: list[SuggestedReminderItem] = suggest_completed_reminder_items(
+		except DeliveryError as error:
+			return error
+		return suggest_completed_reminder_items(
 			completed_items,
 			self.template_item_names,
 		)
+
+	def finish_completed_item_scan(self, suggestions: list[SuggestedReminderItem]) -> None:
 		self.template_suggested_items = suggestions
 		if len(self.template_suggested_items) > 0:
 			self.selected_template_suggestion_indexes = default_completed_reminder_suggestion_indexes(suggestions)
@@ -1616,6 +1634,25 @@ class ListKitApp(App[int]):
 				return
 			self.show_error("Could not list Apple Reminders lists.")
 			return
+		if event.worker is self.completed_item_scan_worker:
+			if event.state in {WorkerState.SUCCESS, WorkerState.ERROR, WorkerState.CANCELLED}:
+				self.completed_item_scan_worker = None
+			if self.view_name != "template_completed_scan_running":
+				return
+			if event.state == WorkerState.ERROR:
+				self.show_template_name_screen()
+				return
+			if event.state != WorkerState.SUCCESS:
+				return
+			result = event.worker.result
+			if isinstance(result, DeliveryError):
+				self.show_template_name_screen()
+				return
+			if isinstance(result, list):
+				self.finish_completed_item_scan(result)
+				return
+			self.show_template_name_screen()
+			return
 		if event.worker is not self.update_worker:
 			return
 		release = self.update_release
@@ -2113,6 +2150,8 @@ class ListKitApp(App[int]):
 			self.show_main_menu()
 		elif self.view_name == "template_completed_scan":
 			self.show_create_template_source_screen()
+		elif self.view_name == "template_completed_scan_running":
+			self.show_completed_item_scan_screen()
 		elif self.view_name == "template_completed_suggestions":
 			self.show_completed_item_scan_screen()
 		elif self.view_name == "template_name":
