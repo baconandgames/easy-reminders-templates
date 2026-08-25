@@ -89,10 +89,16 @@ class AppleRemindersTarget:
 		)
 
 	def list_targets(self) -> list[DeliveryTargetOption]:
+		return self._list_targets("list-targets")
+
+	def list_basic_targets(self) -> list[DeliveryTargetOption]:
+		return self._list_targets("list-basic-targets")
+
+	def _list_targets(self, command: str) -> list[DeliveryTargetOption]:
 		helper_path: Path = get_reminders_helper_path()
 		try:
 			result = self._runner(
-				["swift", str(helper_path), "list-targets"],
+				["swift", str(helper_path), command],
 				input="",
 				check=True,
 				capture_output=True,

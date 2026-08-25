@@ -346,6 +346,7 @@ class ListKitApp(App[int]):
 		self.update_result: UpdateResult | None = None
 		self.update_worker: Worker | None = None
 		self.launch_update_worker: Worker | None = None
+		self.template_source_worker: Worker | None = None
 		self.reminders_operation_running: bool = False
 		self.suppress_input_until: float = 0.0
 		self.template_source_target: DeliveryTargetOption | None = None
@@ -474,14 +475,29 @@ class ListKitApp(App[int]):
 
 	def show_create_template_source_screen(self) -> None:
 		self.view_name = "template_source"
+		self.set_header("Create Template from List", "Loading Reminders lists. This can take a moment for large Reminders libraries.")
+		self.set_footer("[ESC back | Ctrl-C quit]")
+		self.replace_body(
+			Static("Loading Reminders lists..."),
+			ProgressBar(total=None, show_percentage=False, show_eta=False),
+		)
+		self.template_source_worker = self.run_worker(
+			self.load_template_source_targets,
+			name="template-source-targets",
+			thread=True,
+		)
+
+	def load_template_source_targets(self) -> list[DeliveryTargetOption] | DeliveryError:
+		try:
+			reminders = AppleRemindersTarget()
+			list_basic_targets = getattr(reminders, "list_basic_targets", reminders.list_targets)
+			return list_basic_targets()
+		except DeliveryError as error:
+			return error
+
+	def show_template_source_targets(self, targets: list[DeliveryTargetOption]) -> None:
 		self.set_header("Create Template from List", "Choose the Reminders list to turn into a reusable ListKit template.")
 		self.set_footer("[↑↓ select | ENTER confirm | ESC back | Ctrl-C quit]")
-		try:
-			targets = AppleRemindersTarget().list_targets()
-		except DeliveryError as error:
-			self.show_error(str(error))
-			return
-
 		visible_targets = [
 			target for target in targets if target.identifier not in self.config.hidden_apple_reminders_list_ids
 		]
@@ -1581,6 +1597,25 @@ class ListKitApp(App[int]):
 			if event.state in {WorkerState.SUCCESS, WorkerState.ERROR, WorkerState.CANCELLED}:
 				self.launch_update_worker = None
 			return
+		if event.worker is self.template_source_worker:
+			if event.state in {WorkerState.SUCCESS, WorkerState.ERROR, WorkerState.CANCELLED}:
+				self.template_source_worker = None
+			if self.view_name != "template_source":
+				return
+			if event.state == WorkerState.ERROR:
+				self.show_error("Could not list Apple Reminders lists.")
+				return
+			if event.state != WorkerState.SUCCESS:
+				return
+			result = event.worker.result
+			if isinstance(result, DeliveryError):
+				self.show_error(str(result))
+				return
+			if isinstance(result, list):
+				self.show_template_source_targets(result)
+				return
+			self.show_error("Could not list Apple Reminders lists.")
+			return
 		if event.worker is not self.update_worker:
 			return
 		release = self.update_release
@@ -2141,6 +2176,8 @@ def run_textual_listkit(
 
 
 def format_target_label(target: DeliveryTargetOption, show_detail: bool) -> str:
+	if target.item_count < 0:
+		return target.name
 	label = f"{target.name} ({target.item_count})"
 	if not show_detail:
 		return label

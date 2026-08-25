@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import threading
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -608,6 +609,7 @@ def test_create_template_from_list_runs_inside_app_shell(monkeypatch, tmp_path) 
 		app = ListKitApp(Config(), tmp_path)
 		async with app.run_test() as pilot:
 			app.show_create_template_source_screen()
+			await pilot.pause()
 			await pilot.press("enter")
 			await pilot.pause()
 			assert app.view_name == "template_completed_scan"
@@ -633,6 +635,48 @@ def test_create_template_from_list_runs_inside_app_shell(monkeypatch, tmp_path) 
 	assert template_data["name"] == "Packing"
 	assert template_data["short_name"] == "packing"
 	assert [item["name"] for item in template_data["items"]] == ["Socks", "Charger"]
+
+
+def test_create_template_source_screen_loads_targets_in_background(monkeypatch, tmp_path) -> None:
+	started = threading.Event()
+	release = threading.Event()
+
+	class FakeAppleRemindersTarget:
+		def list_targets(self) -> list[DeliveryTargetOption]:
+			started.set()
+			release.wait(timeout=5)
+			return [
+				DeliveryTargetOption(
+					identifier="target-id",
+					name="Packing",
+					source="iCloud",
+					item_count=2,
+					sample_items=[],
+				)
+			]
+
+	monkeypatch.setattr(app_shell, "AppleRemindersTarget", FakeAppleRemindersTarget)
+
+	async def run_app() -> None:
+		app = ListKitApp(Config(), tmp_path)
+		async with app.run_test() as pilot:
+			app.show_create_template_source_screen()
+			await pilot.pause()
+			assert started.wait(timeout=1)
+			assert app.view_name == "template_source"
+			assert "Loading Reminders lists" in str(app.query_one("#context", app_shell.Static).content)
+			assert "Loading Reminders lists..." in str(app.query_one("#body Static", app_shell.Static).content)
+
+			release.set()
+			await pilot.pause()
+			labels = [
+				item.label_text
+				for item in app.query_one(ListView).children
+				if isinstance(item, OptionItem)
+			]
+			assert labels == ["Packing (2)", "↩ Back"]
+
+	asyncio.run(run_app())
 
 
 def test_create_template_from_list_can_scan_completed_items_without_suggestions(monkeypatch, tmp_path) -> None:
@@ -663,6 +707,7 @@ def test_create_template_from_list_can_scan_completed_items_without_suggestions(
 		app = ListKitApp(Config(), tmp_path)
 		async with app.run_test() as pilot:
 			app.show_create_template_source_screen()
+			await pilot.pause()
 			await pilot.press("enter")
 			await pilot.pause()
 			assert app.view_name == "template_completed_scan"
@@ -726,6 +771,7 @@ def test_create_template_from_list_can_add_completed_item_suggestions(monkeypatc
 		app = ListKitApp(Config(), tmp_path)
 		async with app.run_test() as pilot:
 			app.show_create_template_source_screen()
+			await pilot.pause()
 			await pilot.press("enter")
 			await pilot.pause()
 			assert app.view_name == "template_completed_scan"
@@ -787,6 +833,7 @@ def test_create_template_from_list_can_skip_completed_item_suggestions(monkeypat
 		app = ListKitApp(Config(), tmp_path)
 		async with app.run_test() as pilot:
 			app.show_create_template_source_screen()
+			await pilot.pause()
 			await pilot.press("enter")
 			await pilot.pause()
 			assert app.view_name == "template_completed_scan"
@@ -846,6 +893,7 @@ def test_create_template_from_list_handles_long_completed_item_suggestion_list(m
 		app = ListKitApp(Config(), tmp_path)
 		async with app.run_test() as pilot:
 			app.show_create_template_source_screen()
+			await pilot.pause()
 			await pilot.press("enter")
 			await pilot.pause()
 			assert app.view_name == "template_completed_scan"
@@ -912,6 +960,7 @@ def test_create_template_flow_prompts_for_storage_when_shared_folder_exists(monk
 		app = ListKitApp(Config(external_templates_path=str(shared_path)), local_path)
 		async with app.run_test() as pilot:
 			app.show_create_template_source_screen()
+			await pilot.pause()
 			await pilot.press("enter")
 			await pilot.press("down")
 			await pilot.press("enter")
@@ -1401,6 +1450,7 @@ def test_sort_helpers_support_requested_modes() -> None:
 	assert [target.name for target in app_shell.sort_reminders_targets(targets, "item_count_desc")] == ["Large", "Small"]
 	assert [target.name for target in app_shell.sort_reminders_targets(targets, "most_frequently_used", {"small-id": {"name": "Small", "count": 2}})] == ["Small", "Large"]
 	assert app_shell.template_item_count(templates["large"]) == 2
+	assert app_shell.format_target_label(DeliveryTargetOption("unknown-id", "Unknown", "iCloud", -1, []), show_detail=True) == "Unknown"
 
 
 def test_successful_reminder_creation_records_usage(monkeypatch, tmp_path) -> None:

@@ -126,6 +126,46 @@ def test_apple_reminders_target_creates_target() -> None:
 	assert calls[0]["input"] == "Beach"
 
 
+def test_apple_reminders_target_lists_basic_targets_without_item_details() -> None:
+	calls = []
+
+	def fake_runner(args, input, check, capture_output, text):
+		calls.append(
+			{
+				"args": args,
+				"input": input,
+				"check": check,
+				"capture_output": capture_output,
+				"text": text,
+			}
+		)
+		return subprocess.CompletedProcess(
+			args,
+			0,
+			stdout=json.dumps(
+				[
+					{
+						"id": "list-1",
+						"name": "Packing",
+						"source": "iCloud",
+						"item_count": -1,
+						"sample_items": [],
+					}
+				]
+			),
+			stderr="",
+		)
+
+	targets = AppleRemindersTarget(runner=fake_runner).list_basic_targets()
+
+	assert targets == [DeliveryTargetOption("list-1", "Packing", "iCloud", -1, [])]
+	assert calls[0]["args"][2] == "list-basic-targets"
+	assert calls[0]["input"] == ""
+	assert calls[0]["check"] is True
+	assert calls[0]["capture_output"] is True
+	assert calls[0]["text"] is True
+
+
 def test_apple_reminders_target_lists_items() -> None:
 	calls = []
 

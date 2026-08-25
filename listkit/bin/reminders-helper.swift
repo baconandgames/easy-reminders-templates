@@ -168,6 +168,28 @@ func listTargets(in store: EKEventStore) {
 	}
 }
 
+func listBasicTargets(in store: EKEventStore) {
+	let targets = reminderCalendars(in: store).map { calendar in
+		ReminderTarget(
+			id: calendar.calendarIdentifier,
+			name: calendar.title,
+			source: calendar.source.title,
+			itemCount: -1,
+			sampleItems: []
+		)
+	}
+
+	do {
+		let data = try JSONEncoder().encode(targets)
+		guard let output = String(data: data, encoding: .utf8) else {
+			fail("Could not encode reminder targets.")
+		}
+		print(output)
+	} catch {
+		fail("Could not encode reminder targets: \(error.localizedDescription)")
+	}
+}
+
 func listItems(in store: EKEventStore) {
 	let input = FileHandle.standardInput.readDataToEndOfFile()
 	guard let listIdentifier = String(data: input, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -298,7 +320,7 @@ func createReminders(in store: EKEventStore) {
 
 let arguments = CommandLine.arguments
 guard arguments.count == 2 else {
-	fail("Usage: reminders-helper.swift <list-reminders|list-targets|list-items|list-completed-items|create-list|create-reminders>")
+	fail("Usage: reminders-helper.swift <list-reminders|list-targets|list-basic-targets|list-items|list-completed-items|create-list|create-reminders>")
 }
 
 let store = EKEventStore()
@@ -309,6 +331,8 @@ case "list-reminders":
 	listReminders(in: store)
 case "list-targets":
 	listTargets(in: store)
+case "list-basic-targets":
+	listBasicTargets(in: store)
 case "list-items":
 	listItems(in: store)
 case "list-completed-items":
